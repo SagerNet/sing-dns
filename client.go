@@ -351,6 +351,8 @@ func (c *Client) questionCache(question dnsmessage.Question) ([]netip.Addr, erro
 func messageToAddresses(response *dnsmessage.Message) ([]netip.Addr, error) {
 	if response.RCode != dnsmessage.RCodeSuccess {
 		return nil, RCodeError(response.RCode)
+	} else if len(response.Answers) == 0 {
+		return nil, RCodeNameError
 	}
 	addresses := make([]netip.Addr, 0, len(response.Answers))
 	for _, answer := range response.Answers {
