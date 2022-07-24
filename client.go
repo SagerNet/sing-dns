@@ -45,16 +45,17 @@ func (c *Client) Exchange(ctx context.Context, transport Transport, message *dns
 	if len(message.Questions) != 1 {
 		responseMessage := dnsmessage.Message{
 			Header: dnsmessage.Header{
-				ID:               message.ID,
-				RCode:            dnsmessage.RCodeFormatError,
-				Response:         true,
-				RecursionDesired: true,
+				ID:       message.ID,
+				Response: true,
+				RCode:    dnsmessage.RCodeFormatError,
 			},
+			Questions: message.Questions,
 		}
 		return &responseMessage, nil
 	}
 	question := message.Questions[0]
-	if !c.disableCache {
+	disableCache := c.disableCache || DisableCacheFromContext(ctx)
+	if !disableCache {
 		cachedAnswer, cached := c.cache.Load(question)
 		if cached {
 			cachedAnswer.ID = message.ID
@@ -70,10 +71,9 @@ func (c *Client) Exchange(ctx context.Context, transport Transport, message *dns
 	if question.Type == dnsmessage.TypeA && c.strategy == DomainStrategyUseIPv6 || question.Type == dnsmessage.TypeAAAA && c.strategy == DomainStrategyUseIPv4 {
 		responseMessage := dnsmessage.Message{
 			Header: dnsmessage.Header{
-				ID:               message.ID,
-				RCode:            dnsmessage.RCodeNameError,
-				Response:         true,
-				RecursionDesired: true,
+				ID:       message.ID,
+				Response: true,
+				RCode:    dnsmessage.RCodeNameError,
 			},
 			Questions: []dnsmessage.Question{question},
 		}
@@ -85,7 +85,7 @@ func (c *Client) Exchange(ctx context.Context, transport Transport, message *dns
 		return nil, err
 	}
 	response.ID = messageId
-	if !c.disableCache {
+	if !disableCache {
 		c.storeCache(question, response)
 	}
 	return response, err
@@ -127,7 +127,8 @@ func (c *Client) Lookup(ctx context.Context, transport Transport, domain string,
 		}
 		return sortAddresses(response4, response6, strategy), nil
 	}
-	if !c.disableCache {
+	disableCache := c.disableCache || DisableCacheFromContext(ctx)
+	if !disableCache {
 		if strategy == DomainStrategyUseIPv4 {
 			response, err := c.questionCache(dnsmessage.Question{
 				Name:  dnsName,
@@ -171,16 +172,15 @@ func (c *Client) Lookup(ctx context.Context, transport Transport, domain string,
 		} else {
 			rCode = dnsmessage.RCode(rCodeError)
 		}
-		if c.disableCache {
+		if disableCache {
 			return nil, err
 		}
 	}
 	header := dnsmessage.Header{
-		Response:      true,
-		Authoritative: true,
-		RCode:         rCode,
+		Response: true,
+		RCode:    rCode,
 	}
-	if !c.disableCache {
+	if !disableCache {
 		if strategy != DomainStrategyUseIPv6 {
 			question4 := dnsmessage.Question{
 				Name:  dnsName,
@@ -286,11 +286,9 @@ func (c *Client) exchangeToLookup(ctx context.Context, transport Transport, mess
 	}
 	response := dnsmessage.Message{
 		Header: dnsmessage.Header{
-			ID:                 message.ID,
-			RCode:              rCode,
-			RecursionAvailable: true,
-			RecursionDesired:   true,
-			Response:           true,
+			ID:       message.ID,
+			RCode:    rCode,
+			Response: true,
 		},
 		Questions: message.Questions,
 	}
@@ -320,7 +318,8 @@ func (c *Client) lookupToExchange(ctx context.Context, transport Transport, name
 		Type:  qType,
 		Class: dnsmessage.ClassINET,
 	}
-	if !c.disableCache {
+	disableCache := c.disableCache || DisableCacheFromContext(ctx)
+	if !disableCache {
 		cachedAddresses, err := c.questionCache(question)
 		if err != ErrNotCached {
 			return cachedAddresses, err

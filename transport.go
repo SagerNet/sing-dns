@@ -53,6 +53,8 @@ func NewTransport(ctx context.Context, dialer N.Dialer, address string) (Transpo
 		return NewTLSTransport(ctx, dialer, destination), nil
 	case "https":
 		return NewHTTPSTransport(dialer, serverURL.String()), nil
+	case "rcode":
+		return NewRCodeTransport(serverURL.Host)
 	default:
 		return nil, E.New("unknown dns scheme: " + serverURL.Scheme)
 	}
