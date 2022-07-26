@@ -38,6 +38,10 @@ func NewTransport(ctx context.Context, dialer N.Dialer, address string) (Transpo
 		if port == "" {
 			port = "853"
 		}
+	case "quic":
+		if port == "" {
+			port = "853"
+		}
 	default:
 		if port == "" {
 			port = "53"
@@ -53,6 +57,11 @@ func NewTransport(ctx context.Context, dialer N.Dialer, address string) (Transpo
 		return NewTLSTransport(ctx, dialer, destination), nil
 	case "https":
 		return NewHTTPSTransport(dialer, serverURL.String()), nil
+	case "quic":
+		return NewQUICTransport(ctx, dialer, destination)
+	case "h3":
+		serverURL.Scheme = "https"
+		return NewHTTP3Transport(dialer, serverURL.String())
 	case "rcode":
 		return NewRCodeTransport(serverURL.Host)
 	default:

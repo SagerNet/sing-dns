@@ -89,7 +89,7 @@ func (t *UDPTransport) loopIn(conn *dnsConnection) error {
 	defer buffer.Release()
 	for {
 		buffer.FullReset()
-		_, err := buffer.ReadFrom(conn)
+		_, err := buffer.ReadOnceFrom(conn)
 		if err != nil {
 			return err
 		}

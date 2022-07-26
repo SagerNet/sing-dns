@@ -2,6 +2,7 @@ package test_test
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -42,7 +43,43 @@ func TestTLSDNS(t *testing.T) {
 func TestHTTPSDNS(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	transport := dns.NewHTTPSTransport(N.SystemDialer, "https://1.0.0.1:443/dns-query")
+	transport := dns.NewHTTPSTransport(N.SystemDialer, "https://1.0.0.1/dns-query")
+	response, err := transport.Exchange(ctx, makeQuery())
+	cancel()
+	require.NoError(t, err)
+	require.NotEmpty(t, response.Answers, "no answers")
+	for _, answer := range response.Answers {
+		t.Log(answer)
+	}
+}
+
+func TestQUICDNS(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	transport, err := dns.NewQUICTransport(ctx, N.SystemDialer, M.ParseSocksaddr("dns.adguard.com:853"))
+	if err == os.ErrInvalid {
+		t.SkipNow()
+		return
+	}
+	require.NoError(t, err)
+	response, err := transport.Exchange(ctx, makeQuery())
+	cancel()
+	require.NoError(t, err)
+	require.NotEmpty(t, response.Answers, "no answers")
+	for _, answer := range response.Answers {
+		t.Log(answer)
+	}
+}
+
+func TestH3DNS(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	transport, err := dns.NewHTTP3Transport(N.SystemDialer, "https://8.8.8.8/dns-query")
+	if err == os.ErrInvalid {
+		t.SkipNow()
+		return
+	}
+	require.NoError(t, err)
 	response, err := transport.Exchange(ctx, makeQuery())
 	cancel()
 	require.NoError(t, err)
