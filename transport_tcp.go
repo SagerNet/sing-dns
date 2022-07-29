@@ -46,12 +46,12 @@ func (t *TCPTransport) offer() (*dnsConnection, error) {
 		}
 	}
 	t.access.Lock()
+	defer t.access.Unlock()
 	connection = t.connection
 	if connection != nil {
 		select {
 		case <-connection.done:
 		default:
-			t.access.Unlock()
 			return connection, nil
 		}
 	}
@@ -65,7 +65,6 @@ func (t *TCPTransport) offer() (*dnsConnection, error) {
 		callbacks: make(map[uint16]chan *dnsmessage.Message),
 	}
 	t.connection = connection
-	t.access.Unlock()
 	go t.newConnection(connection)
 	return connection, nil
 }
