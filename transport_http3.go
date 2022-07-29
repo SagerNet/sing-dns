@@ -34,7 +34,7 @@ func NewHTTP3Transport(dialer N.Dialer, destination string) (*HTTP3Transport, er
 		transport: &http3.RoundTripper{
 			Dial: func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
 				destinationAddr := M.ParseSocksaddr(addr)
-				conn, err := dialer.DialContext(ctx, "udp", destinationAddr)
+				conn, err := dialer.DialContext(ctx, N.NetworkUDP, destinationAddr)
 				if err != nil {
 					return nil, err
 				}

@@ -66,7 +66,7 @@ func (t *QUICTransport) openConnection() (quic.EarlyConnection, error) {
 	if connection != nil && !common.Done(connection.Context()) {
 		return connection, nil
 	}
-	conn, err := t.dialer.DialContext(t.ctx, "udp", t.destination)
+	conn, err := t.dialer.DialContext(t.ctx, N.NetworkUDP, t.destination)
 	if err != nil {
 		return nil, err
 	}

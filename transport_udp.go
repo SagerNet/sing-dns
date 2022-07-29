@@ -51,7 +51,7 @@ func (t *UDPTransport) offer() (*dnsConnection, error) {
 			return connection, nil
 		}
 	}
-	tcpConn, err := t.dialer.DialContext(t.ctx, "udp", t.destination)
+	tcpConn, err := t.dialer.DialContext(t.ctx, N.NetworkUDP, t.destination)
 	if err != nil {
 		return nil, err
 	}

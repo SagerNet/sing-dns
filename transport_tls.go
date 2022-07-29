@@ -54,7 +54,7 @@ func (t *TLSTransport) offer(ctx context.Context) (*dnsConnection, error) {
 			return connection, nil
 		}
 	}
-	tcpConn, err := t.dialer.DialContext(t.ctx, "tcp", t.destination)
+	tcpConn, err := t.dialer.DialContext(t.ctx, N.NetworkTCP, t.destination)
 	if err != nil {
 		return nil, err
 	}

@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/lucas-clemente/quic-go v0.28.1
-	github.com/sagernet/sing v0.0.0-20220726034811-bc109486f14e
+	github.com/sagernet/sing v0.0.0-20220729120910-4376f188c512
 	golang.org/x/net v0.0.0-20220728211354-c7608f3a8462
 )
 
