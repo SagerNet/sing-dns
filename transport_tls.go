@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"encoding/binary"
 	"os"
-
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -61,10 +60,9 @@ func (t *TLSTransport) offer(ctx context.Context) (*dnsConnection, error) {
 	tlsConn := tls.Client(tcpConn, &tls.Config{
 		ServerName: t.destination.AddrString(),
 	})
-	err = task.Run(t.ctx, func() error {
-		return tlsConn.HandshakeContext(ctx)
-	})
+	err = tlsConn.HandshakeContext(ctx)
 	if err != nil {
+		tcpConn.Close()
 		return nil, err
 	}
 	connection = &dnsConnection{
