@@ -67,10 +67,8 @@ func (t *UDPTransport) offer() (*dnsConnection, error) {
 
 func (t *UDPTransport) newConnection(conn *dnsConnection) {
 	defer close(conn.done)
-	defer conn.Close()
-	err := task.Any(t.ctx, func(ctx context.Context) error {
-		return t.loopIn(conn)
-	}, func(ctx context.Context) error {
+	var group task.Group
+	group.Append0(func(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return nil
@@ -78,7 +76,14 @@ func (t *UDPTransport) newConnection(conn *dnsConnection) {
 			return os.ErrClosed
 		}
 	})
-	conn.err = err
+	group.Append0(func(ctx context.Context) error {
+		return t.loopIn(conn)
+	})
+	group.Cleanup(func() {
+		conn.Close()
+	})
+	group.FastFail()
+	conn.err = group.Run(t.ctx)
 }
 
 func (t *UDPTransport) loopIn(conn *dnsConnection) error {
@@ -111,12 +116,7 @@ func (t *UDPTransport) loopIn(conn *dnsConnection) error {
 }
 
 func (t *UDPTransport) Exchange(ctx context.Context, message *dnsmessage.Message) (*dnsmessage.Message, error) {
-	var connection *dnsConnection
-	err := task.Run(ctx, func() error {
-		var innerErr error
-		connection, innerErr = t.offer()
-		return innerErr
-	})
+	connection, err := t.offer()
 	if err != nil {
 		return nil, err
 	}
@@ -135,9 +135,7 @@ func (t *UDPTransport) Exchange(ctx context.Context, message *dnsmessage.Message
 		return nil, err
 	}
 	buffer.Truncate(len(rawMessage))
-	err = task.Run(ctx, func() error {
-		return common.Error(connection.Write(buffer.Bytes()))
-	})
+	err = common.Error(connection.Write(buffer.Bytes()))
 	if err != nil {
 		return nil, err
 	}

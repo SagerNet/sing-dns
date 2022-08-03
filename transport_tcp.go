@@ -71,10 +71,8 @@ func (t *TCPTransport) offer() (*dnsConnection, error) {
 
 func (t *TCPTransport) newConnection(conn *dnsConnection) {
 	defer close(conn.done)
-	defer conn.Close()
-	err := task.Any(t.ctx, func(ctx context.Context) error {
-		return t.loopIn(conn)
-	}, func(ctx context.Context) error {
+	var group task.Group
+	group.Append0(func(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return nil
@@ -82,7 +80,14 @@ func (t *TCPTransport) newConnection(conn *dnsConnection) {
 			return os.ErrClosed
 		}
 	})
-	conn.err = err
+	group.Append0(func(ctx context.Context) error {
+		return t.loopIn(conn)
+	})
+	group.Cleanup(func() {
+		conn.Close()
+	})
+	group.FastFail()
+	conn.err = group.Run(t.ctx)
 }
 
 func (t *TCPTransport) loopIn(conn *dnsConnection) error {
@@ -133,12 +138,7 @@ type dnsConnection struct {
 }
 
 func (t *TCPTransport) Exchange(ctx context.Context, message *dnsmessage.Message) (*dnsmessage.Message, error) {
-	var connection *dnsConnection
-	err := task.Run(ctx, func() error {
-		var innerErr error
-		connection, innerErr = t.offer()
-		return innerErr
-	})
+	connection, err := t.offer()
 	if err != nil {
 		return nil, err
 	}
@@ -159,9 +159,7 @@ func (t *TCPTransport) Exchange(ctx context.Context, message *dnsmessage.Message
 	}
 	buffer.Truncate(2 + len(rawMessage))
 	binary.BigEndian.PutUint16(length, uint16(len(rawMessage)))
-	err = task.Run(ctx, func() error {
-		return common.Error(connection.Write(buffer.Bytes()))
-	})
+	err = common.Error(connection.Write(buffer.Bytes()))
 	if err != nil {
 		return nil, err
 	}

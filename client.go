@@ -107,14 +107,16 @@ func (c *Client) Lookup(ctx context.Context, transport Transport, domain string,
 		}
 		var response4 []netip.Addr
 		var response6 []netip.Addr
-		err = task.Run(ctx, func() error {
+		var group task.Group
+		group.Append("exchange4", func(ctx context.Context) error {
 			response, err := c.lookupToExchange(ctx, transport, dnsName, dnsmessage.TypeA)
 			if err != nil {
 				return err
 			}
 			response4 = response
 			return nil
-		}, func() error {
+		})
+		group.Append("exchange6", func(ctx context.Context) error {
 			response, err := c.lookupToExchange(ctx, transport, dnsName, dnsmessage.TypeAAAA)
 			if err != nil {
 				return err
@@ -122,6 +124,7 @@ func (c *Client) Lookup(ctx context.Context, transport Transport, domain string,
 			response6 = response
 			return nil
 		})
+		err = group.Run(ctx)
 		if len(response4) == 0 && len(response6) == 0 {
 			return nil, err
 		}

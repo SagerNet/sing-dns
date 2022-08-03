@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/binary"
 	"os"
+
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -77,10 +78,8 @@ func (t *TLSTransport) offer(ctx context.Context) (*dnsConnection, error) {
 
 func (t *TLSTransport) newConnection(conn *dnsConnection) {
 	defer close(conn.done)
-	defer conn.Close()
-	err := task.Any(t.ctx, func(ctx context.Context) error {
-		return t.loopIn(conn)
-	}, func(ctx context.Context) error {
+	var group task.Group
+	group.Append0(func(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return nil
@@ -88,7 +87,14 @@ func (t *TLSTransport) newConnection(conn *dnsConnection) {
 			return os.ErrClosed
 		}
 	})
-	conn.err = err
+	group.Append0(func(ctx context.Context) error {
+		return t.loopIn(conn)
+	})
+	group.Cleanup(func() {
+		conn.Close()
+	})
+	group.FastFail()
+	conn.err = group.Run(t.ctx)
 }
 
 func (t *TLSTransport) loopIn(conn *dnsConnection) error {
@@ -130,12 +136,7 @@ func (t *TLSTransport) loopIn(conn *dnsConnection) error {
 }
 
 func (t *TLSTransport) Exchange(ctx context.Context, message *dnsmessage.Message) (*dnsmessage.Message, error) {
-	var connection *dnsConnection
-	err := task.Run(ctx, func() error {
-		var innerErr error
-		connection, innerErr = t.offer(ctx)
-		return innerErr
-	})
+	connection, err := t.offer(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -156,9 +157,7 @@ func (t *TLSTransport) Exchange(ctx context.Context, message *dnsmessage.Message
 	}
 	buffer.Truncate(2 + len(rawMessage))
 	binary.BigEndian.PutUint16(length, uint16(len(rawMessage)))
-	err = task.Run(ctx, func() error {
-		return common.Error(connection.Write(buffer.Bytes()))
-	})
+	err = common.Error(connection.Write(buffer.Bytes()))
 	if err != nil {
 		return nil, err
 	}
