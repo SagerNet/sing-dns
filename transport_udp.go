@@ -51,12 +51,12 @@ func (t *UDPTransport) offer() (*dnsConnection, error) {
 			return connection, nil
 		}
 	}
-	tcpConn, err := t.dialer.DialContext(t.ctx, N.NetworkUDP, t.destination)
+	udpConn, err := t.dialer.DialContext(t.ctx, N.NetworkUDP, t.destination)
 	if err != nil {
 		return nil, err
 	}
 	connection = &dnsConnection{
-		Conn:      tcpConn,
+		Conn:      udpConn,
 		done:      make(chan struct{}),
 		callbacks: make(map[uint16]chan *dnsmessage.Message),
 	}
@@ -125,7 +125,6 @@ func (t *UDPTransport) Exchange(ctx context.Context, message *dnsmessage.Message
 	message.ID = connection.queryId
 	callback := make(chan *dnsmessage.Message)
 	connection.callbacks[message.ID] = callback
-	connection.access.Unlock()
 	_buffer := buf.StackNewSize(1024)
 	defer common.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
@@ -136,7 +135,9 @@ func (t *UDPTransport) Exchange(ctx context.Context, message *dnsmessage.Message
 	}
 	buffer.Truncate(len(rawMessage))
 	err = common.Error(connection.Write(buffer.Bytes()))
+	connection.access.Unlock()
 	if err != nil {
+		connection.Close()
 		return nil, err
 	}
 	select {

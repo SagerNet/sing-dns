@@ -159,6 +159,7 @@ func (t *TLSTransport) Exchange(ctx context.Context, message *dnsmessage.Message
 	binary.BigEndian.PutUint16(length, uint16(len(rawMessage)))
 	err = common.Error(connection.Write(buffer.Bytes()))
 	if err != nil {
+		connection.Close()
 		return nil, err
 	}
 	select {

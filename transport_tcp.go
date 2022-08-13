@@ -147,7 +147,6 @@ func (t *TCPTransport) Exchange(ctx context.Context, message *dnsmessage.Message
 	message.ID = connection.queryId
 	callback := make(chan *dnsmessage.Message)
 	connection.callbacks[message.ID] = callback
-	connection.access.Unlock()
 	_buffer := buf.StackNewSize(1024)
 	defer common.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
@@ -160,7 +159,9 @@ func (t *TCPTransport) Exchange(ctx context.Context, message *dnsmessage.Message
 	buffer.Truncate(2 + len(rawMessage))
 	binary.BigEndian.PutUint16(length, uint16(len(rawMessage)))
 	err = common.Error(connection.Write(buffer.Bytes()))
+	connection.access.Unlock()
 	if err != nil {
+		connection.Close()
 		return nil, err
 	}
 	select {
