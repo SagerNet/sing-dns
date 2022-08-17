@@ -3,7 +3,7 @@ module test
 go 1.18
 
 require (
-	github.com/sagernet/sing v0.0.0-20220803094243-d9ca259bec6a
+	github.com/sagernet/sing v0.0.0-20220816094748-fb82be7f3f08
 	github.com/sagernet/sing-dns v0.0.0
 	github.com/stretchr/testify v1.8.0
 	golang.org/x/net v0.0.0-20220728211354-c7608f3a8462

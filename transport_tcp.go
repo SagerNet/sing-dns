@@ -4,15 +4,11 @@ import (
 	"context"
 	"encoding/binary"
 	"net"
-	"os"
-	"sync"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
-	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/common/task"
 
 	"golang.org/x/net/dns/dnsmessage"
 )
@@ -24,152 +20,47 @@ type TCPTransport struct {
 }
 
 func NewTCPTransport(ctx context.Context, dialer N.Dialer, destination M.Socksaddr) *TCPTransport {
-	return &TCPTransport{
-		myTransportAdapter{
-			ctx:         ctx,
-			dialer:      dialer,
-			destination: destination,
-			done:        make(chan struct{}),
-		},
+	transport := &TCPTransport{
+		newAdapter(ctx, dialer, destination),
 	}
+	transport.handler = transport
+	return transport
 }
 
-func (t *TCPTransport) offer() (*dnsConnection, error) {
-	t.access.RLock()
-	connection := t.connection
-	t.access.RUnlock()
-	if connection != nil {
-		select {
-		case <-connection.done:
-		default:
-			return connection, nil
-		}
-	}
-	t.access.Lock()
-	defer t.access.Unlock()
-	connection = t.connection
-	if connection != nil {
-		select {
-		case <-connection.done:
-		default:
-			return connection, nil
-		}
-	}
-	tcpConn, err := t.dialer.DialContext(t.ctx, N.NetworkTCP, t.destination)
+func (t *TCPTransport) DialContext(ctx context.Context, queryCtx context.Context) (net.Conn, error) {
+	return t.dialer.DialContext(ctx, N.NetworkTCP, t.destination)
+}
+
+func (t *TCPTransport) ReadMessage(conn net.Conn) (*dnsmessage.Message, error) {
+	var length uint16
+	err := binary.Read(conn, binary.BigEndian, &length)
 	if err != nil {
 		return nil, err
 	}
-	connection = &dnsConnection{
-		Conn:      tcpConn,
-		done:      make(chan struct{}),
-		callbacks: make(map[uint16]chan *dnsmessage.Message),
-	}
-	t.connection = connection
-	go t.newConnection(connection)
-	return connection, nil
-}
-
-func (t *TCPTransport) newConnection(conn *dnsConnection) {
-	defer close(conn.done)
-	var group task.Group
-	group.Append0(func(ctx context.Context) error {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-t.done:
-			return os.ErrClosed
-		}
-	})
-	group.Append0(func(ctx context.Context) error {
-		return t.loopIn(conn)
-	})
-	group.Cleanup(func() {
-		conn.Close()
-	})
-	group.FastFail()
-	conn.err = group.Run(t.ctx)
-}
-
-func (t *TCPTransport) loopIn(conn *dnsConnection) error {
-	_buffer := buf.StackNewSize(1024)
+	_buffer := buf.StackNewSize(int(length))
 	defer common.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
 	defer buffer.Release()
-	for {
-		buffer.FullReset()
-		_, err := buffer.ReadFullFrom(conn, 2)
-		if err != nil {
-			return err
-		}
-		length := binary.BigEndian.Uint16(buffer.Bytes())
-		if length > 512 {
-			return E.New("invalid length received: ", length)
-		}
-		buffer.FullReset()
-		_, err = buffer.ReadFullFrom(conn, int(length))
-		if err != nil {
-			return err
-		}
-		var message dnsmessage.Message
-		err = message.Unpack(buffer.Bytes())
-		if err != nil {
-			return err
-		}
-		conn.access.Lock()
-		callback, loaded := conn.callbacks[message.ID]
-		if loaded {
-			delete(conn.callbacks, message.ID)
-		}
-		conn.access.Unlock()
-		if !loaded {
-			continue
-		}
-		callback <- &message
-	}
-}
-
-type dnsConnection struct {
-	net.Conn
-	done      chan struct{}
-	err       error
-	access    sync.Mutex
-	queryId   uint16
-	callbacks map[uint16]chan *dnsmessage.Message
-}
-
-func (t *TCPTransport) Exchange(ctx context.Context, message *dnsmessage.Message) (*dnsmessage.Message, error) {
-	connection, err := t.offer()
+	_, err = buffer.ReadFullFrom(conn, int(length))
 	if err != nil {
 		return nil, err
 	}
-	connection.access.Lock()
-	connection.queryId++
-	message.ID = connection.queryId
-	callback := make(chan *dnsmessage.Message)
-	connection.callbacks[message.ID] = callback
-	_buffer := buf.StackNewSize(1024)
+	var message dnsmessage.Message
+	err = message.Unpack(buffer.Bytes())
+	return &message, err
+}
+
+func (t *TCPTransport) WriteMessage(conn net.Conn, message *dnsmessage.Message) error {
+	_buffer := buf.StackNewSize(FixedPacketSize)
 	defer common.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
 	defer buffer.Release()
-	length := buffer.Extend(2)
-	rawMessage, err := message.AppendPack(buffer.Index(2))
+	buffer.Resize(2, 0)
+	rawMessage, err := message.AppendPack(buffer.Index(0))
 	if err != nil {
-		return nil, err
+		return err
 	}
-	buffer.Truncate(2 + len(rawMessage))
-	binary.BigEndian.PutUint16(length, uint16(len(rawMessage)))
-	err = common.Error(connection.Write(buffer.Bytes()))
-	connection.access.Unlock()
-	if err != nil {
-		connection.Close()
-		return nil, err
-	}
-	select {
-	case response := <-callback:
-		return response, nil
-	case <-connection.done:
-		return nil, connection.err
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
+	buffer.Resize(0, 2+len(rawMessage))
+	binary.BigEndian.PutUint16(buffer.To(2), uint16(len(rawMessage)))
+	return common.Error(conn.Write(buffer.Bytes()))
 }
