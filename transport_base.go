@@ -132,7 +132,9 @@ func (t *myTransportAdapter) exchange(ctx context.Context, message *dnsmessage.M
 	message.ID = conn.queryId
 	conn.callbacks[message.ID] = callback
 	conn.access.Unlock()
+	conn.writeAccess.Lock()
 	err = t.handler.WriteMessage(conn, message)
+	conn.writeAccess.Unlock()
 	if err != nil {
 		conn.cancel()
 		return nil, err
@@ -168,10 +170,11 @@ func (t *myTransportAdapter) Lookup(ctx context.Context, domain string, strategy
 
 type dnsConnection struct {
 	net.Conn
-	ctx       context.Context
-	cancel    context.CancelFunc
-	access    sync.Mutex
-	err       error
-	queryId   uint16
-	callbacks map[uint16]chan *dnsmessage.Message
+	ctx         context.Context
+	cancel      context.CancelFunc
+	access      sync.Mutex
+	writeAccess sync.Mutex
+	err         error
+	queryId     uint16
+	callbacks   map[uint16]chan *dnsmessage.Message
 }

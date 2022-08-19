@@ -3,7 +3,7 @@ module github.com/sagernet/sing-dns
 go 1.18
 
 require (
-	github.com/sagernet/quic-go v0.0.0-20220818144740-0448e696ce5a
+	github.com/sagernet/quic-go v0.0.0-20220818150011-de611ab3e2bb
 	github.com/sagernet/sing v0.0.0-20220816094748-fb82be7f3f08
 	golang.org/x/net v0.0.0-20220812174116-3211cb980234
 )
