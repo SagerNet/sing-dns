@@ -25,17 +25,17 @@ func TestClient(t *testing.T) {
 	for _, server := range servers {
 		t.Log(server)
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-		client := dns.NewClient(dns.DomainStrategyAsIS, false, false)
+		client := dns.NewClient(false, false)
 		dnsTransport, err := dns.NewTransport(context.Background(), N.SystemDialer, server)
 		if err == os.ErrInvalid {
 			cancel()
 			continue
 		}
 		require.NoError(t, err)
-		response, err := client.Exchange(ctx, dnsTransport, makeQuery())
+		response, err := client.Exchange(ctx, dnsTransport, makeQuery(), dns.DomainStrategyAsIS)
 		require.NoError(t, err)
 		require.NotEmpty(t, response.Answers, "no answers")
-		response, err = client.Exchange(ctx, dnsTransport, makeQuery())
+		response, err = client.Exchange(ctx, dnsTransport, makeQuery(), dns.DomainStrategyAsIS)
 		require.NoError(t, err)
 		require.NotEmpty(t, response.Answers, "no answers")
 		addresses, err := client.Lookup(ctx, dnsTransport, "www.google.com", dns.DomainStrategyAsIS)

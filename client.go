@@ -23,15 +23,13 @@ var (
 )
 
 type Client struct {
-	strategy      DomainStrategy
 	disableCache  bool
 	disableExpire bool
 	cache         *cache.LruCache[dnsmessage.Question, *dnsmessage.Message]
 }
 
-func NewClient(strategy DomainStrategy, disableCache bool, disableExpire bool) *Client {
+func NewClient(disableCache bool, disableExpire bool) *Client {
 	client := &Client{
-		strategy:      strategy,
 		disableCache:  disableCache,
 		disableExpire: disableExpire,
 	}
@@ -41,7 +39,7 @@ func NewClient(strategy DomainStrategy, disableCache bool, disableExpire bool) *
 	return client
 }
 
-func (c *Client) Exchange(ctx context.Context, transport Transport, message *dnsmessage.Message) (*dnsmessage.Message, error) {
+func (c *Client) Exchange(ctx context.Context, transport Transport, message *dnsmessage.Message, strategy DomainStrategy) (*dnsmessage.Message, error) {
 	if len(message.Questions) != 1 {
 		responseMessage := dnsmessage.Message{
 			Header: dnsmessage.Header{
@@ -68,12 +66,12 @@ func (c *Client) Exchange(ctx context.Context, transport Transport, message *dns
 		}
 		return nil, ErrNoRawSupport
 	}
-	if question.Type == dnsmessage.TypeA && c.strategy == DomainStrategyUseIPv6 || question.Type == dnsmessage.TypeAAAA && c.strategy == DomainStrategyUseIPv4 {
+	if question.Type == dnsmessage.TypeA && strategy == DomainStrategyUseIPv6 || question.Type == dnsmessage.TypeAAAA && strategy == DomainStrategyUseIPv4 {
 		responseMessage := dnsmessage.Message{
 			Header: dnsmessage.Header{
 				ID:       message.ID,
 				Response: true,
-				RCode:    dnsmessage.RCodeNameError,
+				RCode:    dnsmessage.RCodeSuccess,
 			},
 			Questions: []dnsmessage.Question{question},
 		}
@@ -101,15 +99,15 @@ func (c *Client) Lookup(ctx context.Context, transport Transport, domain string,
 	}
 	if transport.Raw() {
 		if strategy == DomainStrategyUseIPv4 {
-			return c.lookupToExchange(ctx, transport, dnsName, dnsmessage.TypeA)
+			return c.lookupToExchange(ctx, transport, dnsName, dnsmessage.TypeA, strategy)
 		} else if strategy == DomainStrategyUseIPv6 {
-			return c.lookupToExchange(ctx, transport, dnsName, dnsmessage.TypeAAAA)
+			return c.lookupToExchange(ctx, transport, dnsName, dnsmessage.TypeAAAA, strategy)
 		}
 		var response4 []netip.Addr
 		var response6 []netip.Addr
 		var group task.Group
 		group.Append("exchange4", func(ctx context.Context) error {
-			response, err := c.lookupToExchange(ctx, transport, dnsName, dnsmessage.TypeA)
+			response, err := c.lookupToExchange(ctx, transport, dnsName, dnsmessage.TypeA, strategy)
 			if err != nil {
 				return err
 			}
@@ -117,7 +115,7 @@ func (c *Client) Lookup(ctx context.Context, transport Transport, domain string,
 			return nil
 		})
 		group.Append("exchange6", func(ctx context.Context) error {
-			response, err := c.lookupToExchange(ctx, transport, dnsName, dnsmessage.TypeAAAA)
+			response, err := c.lookupToExchange(ctx, transport, dnsName, dnsmessage.TypeAAAA, strategy)
 			if err != nil {
 				return err
 			}
@@ -315,7 +313,7 @@ func (c *Client) exchangeToLookup(ctx context.Context, transport Transport, mess
 	return &response, nil
 }
 
-func (c *Client) lookupToExchange(ctx context.Context, transport Transport, name dnsmessage.Name, qType dnsmessage.Type) ([]netip.Addr, error) {
+func (c *Client) lookupToExchange(ctx context.Context, transport Transport, name dnsmessage.Name, qType dnsmessage.Type, strategy DomainStrategy) ([]netip.Addr, error) {
 	question := dnsmessage.Question{
 		Name:  name,
 		Type:  qType,
@@ -335,7 +333,7 @@ func (c *Client) lookupToExchange(ctx context.Context, transport Transport, name
 		},
 		Questions: []dnsmessage.Question{question},
 	}
-	response, err := c.Exchange(ctx, transport, &message)
+	response, err := c.Exchange(ctx, transport, &message, strategy)
 	if err != nil {
 		return nil, err
 	}
@@ -354,7 +352,7 @@ func messageToAddresses(response *dnsmessage.Message) ([]netip.Addr, error) {
 	if response.RCode != dnsmessage.RCodeSuccess {
 		return nil, RCodeError(response.RCode)
 	} else if len(response.Answers) == 0 {
-		return nil, RCodeNameError
+		return nil, RCodeSuccess
 	}
 	addresses := make([]netip.Addr, 0, len(response.Answers))
 	for _, answer := range response.Answers {
