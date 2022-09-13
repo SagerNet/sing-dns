@@ -7,7 +7,7 @@ import (
 
 	E "github.com/sagernet/sing/common/exceptions"
 
-	"golang.org/x/net/dns/dnsmessage"
+	"github.com/miekg/dns"
 )
 
 var _ Transport = (*RCodeTransport)(nil)
@@ -47,9 +47,9 @@ func (t *RCodeTransport) Raw() bool {
 	return true
 }
 
-func (t *RCodeTransport) Exchange(ctx context.Context, message *dnsmessage.Message) (*dnsmessage.Message, error) {
+func (t *RCodeTransport) Exchange(ctx context.Context, message *dns.Msg) (*dns.Msg, error) {
 	message.Response = true
-	message.RCode = dnsmessage.RCode(t.code)
+	message.Rcode = int(t.code)
 	return message, nil
 }
 

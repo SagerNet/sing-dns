@@ -9,7 +9,7 @@ import (
 
 	"github.com/sagernet/sing/common"
 
-	"golang.org/x/net/dns/dnsmessage"
+	"github.com/miekg/dns"
 )
 
 var LocalTransportConstructor func() Transport
@@ -39,7 +39,7 @@ func (t *LocalTransport) Raw() bool {
 	return false
 }
 
-func (t *LocalTransport) Exchange(ctx context.Context, message *dnsmessage.Message) (*dnsmessage.Message, error) {
+func (t *LocalTransport) Exchange(ctx context.Context, message *dns.Msg) (*dns.Msg, error) {
 	return nil, os.ErrInvalid
 }
 

@@ -1,5 +1,3 @@
-.PHONY: test
-
 fmt:
 	@gofumpt -l -w .
 	@gofmt -s -w .
@@ -18,6 +16,3 @@ lint:
 
 lint_install:
 	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-
-test:
-	cd test && go test -v ./...

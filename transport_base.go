@@ -13,13 +13,13 @@ import (
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/task"
 
-	"golang.org/x/net/dns/dnsmessage"
+	"github.com/miekg/dns"
 )
 
 type myTransportHandler interface {
 	DialContext(ctx context.Context, queryCtx context.Context) (net.Conn, error)
-	ReadMessage(conn net.Conn) (*dnsmessage.Message, error)
-	WriteMessage(conn net.Conn, message *dnsmessage.Message) error
+	ReadMessage(conn net.Conn) (*dns.Msg, error)
+	WriteMessage(conn net.Conn, message *dns.Msg) error
 }
 
 type myTransportAdapter struct {
@@ -71,7 +71,7 @@ func (t *myTransportAdapter) open(ctx context.Context) (*dnsConnection, error) {
 		Conn:      conn,
 		ctx:       connCtx,
 		cancel:    cancel,
-		callbacks: make(map[uint16]chan *dnsmessage.Message),
+		callbacks: make(map[uint16]chan *dns.Msg),
 	}
 	go t.recvLoop(connection)
 	t.conn = connection
@@ -87,9 +87,9 @@ func (t *myTransportAdapter) recvLoop(conn *dnsConnection) {
 				return err
 			}
 			conn.access.Lock()
-			callback, loaded := conn.callbacks[message.ID]
+			callback, loaded := conn.callbacks[message.Id]
 			if loaded {
-				delete(conn.callbacks, message.ID)
+				delete(conn.callbacks, message.Id)
 			}
 			conn.access.Unlock()
 			if loaded {
@@ -103,9 +103,9 @@ func (t *myTransportAdapter) recvLoop(conn *dnsConnection) {
 	group.Run(conn.ctx)
 }
 
-func (t *myTransportAdapter) Exchange(ctx context.Context, message *dnsmessage.Message) (*dnsmessage.Message, error) {
-	messageId := message.ID
-	var response *dnsmessage.Message
+func (t *myTransportAdapter) Exchange(ctx context.Context, message *dns.Msg) (*dns.Msg, error) {
+	messageId := message.Id
+	var response *dns.Msg
 	var err error
 	for attempts := 0; attempts < 3; attempts++ {
 		response, err = t.exchange(ctx, message)
@@ -115,13 +115,13 @@ func (t *myTransportAdapter) Exchange(ctx context.Context, message *dnsmessage.M
 		break
 	}
 	if err == nil {
-		response.ID = messageId
+		response.Id = messageId
 	}
 	return response, err
 }
 
-func (t *myTransportAdapter) exchange(ctx context.Context, message *dnsmessage.Message) (*dnsmessage.Message, error) {
-	callback := make(chan *dnsmessage.Message)
+func (t *myTransportAdapter) exchange(ctx context.Context, message *dns.Msg) (*dns.Msg, error) {
+	callback := make(chan *dns.Msg)
 	defer close(callback)
 	conn, err := t.open(ctx)
 	if err != nil {
@@ -129,8 +129,8 @@ func (t *myTransportAdapter) exchange(ctx context.Context, message *dnsmessage.M
 	}
 	conn.access.Lock()
 	conn.queryId++
-	message.ID = conn.queryId
-	conn.callbacks[message.ID] = callback
+	message.Id = conn.queryId
+	conn.callbacks[message.Id] = callback
 	conn.access.Unlock()
 	conn.writeAccess.Lock()
 	err = t.handler.WriteMessage(conn, message)
@@ -176,5 +176,5 @@ type dnsConnection struct {
 	writeAccess sync.Mutex
 	err         error
 	queryId     uint16
-	callbacks   map[uint16]chan *dnsmessage.Message
+	callbacks   map[uint16]chan *dns.Msg
 }

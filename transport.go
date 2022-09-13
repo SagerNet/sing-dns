@@ -9,14 +9,14 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
-	"golang.org/x/net/dns/dnsmessage"
+	"github.com/miekg/dns"
 )
 
 type Transport interface {
 	Start() error
 	Close() error
 	Raw() bool
-	Exchange(ctx context.Context, message *dnsmessage.Message) (*dnsmessage.Message, error)
+	Exchange(ctx context.Context, message *dns.Msg) (*dns.Msg, error)
 	Lookup(ctx context.Context, domain string, strategy DomainStrategy) ([]netip.Addr, error)
 }
 

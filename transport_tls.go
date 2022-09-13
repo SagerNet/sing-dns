@@ -11,7 +11,7 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
-	"golang.org/x/net/dns/dnsmessage"
+	"github.com/miekg/dns"
 )
 
 var _ Transport = (*TLSTransport)(nil)
@@ -44,7 +44,7 @@ func (t *TLSTransport) DialContext(ctx context.Context, queryCtx context.Context
 	return tlsConn, nil
 }
 
-func (t *TLSTransport) ReadMessage(conn net.Conn) (*dnsmessage.Message, error) {
+func (t *TLSTransport) ReadMessage(conn net.Conn) (*dns.Msg, error) {
 	var length uint16
 	err := binary.Read(conn, binary.BigEndian, &length)
 	if err != nil {
@@ -58,18 +58,18 @@ func (t *TLSTransport) ReadMessage(conn net.Conn) (*dnsmessage.Message, error) {
 	if err != nil {
 		return nil, err
 	}
-	var message dnsmessage.Message
+	var message dns.Msg
 	err = message.Unpack(buffer.Bytes())
 	return &message, err
 }
 
-func (t *TLSTransport) WriteMessage(conn net.Conn, message *dnsmessage.Message) error {
+func (t *TLSTransport) WriteMessage(conn net.Conn, message *dns.Msg) error {
 	_buffer := buf.StackNewSize(4096)
 	defer common.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
 	defer buffer.Release()
 	buffer.Resize(2, 0)
-	rawMessage, err := message.AppendPack(buffer.Index(0))
+	rawMessage, err := message.PackBuffer(buffer.FreeBytes())
 	if err != nil {
 		return err
 	}

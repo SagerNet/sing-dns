@@ -14,7 +14,7 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
-	"golang.org/x/net/dns/dnsmessage"
+	"github.com/miekg/dns"
 )
 
 const dnsMimeType = "application/dns-message"
@@ -54,13 +54,13 @@ func (t *HTTPSTransport) Raw() bool {
 	return true
 }
 
-func (t *HTTPSTransport) Exchange(ctx context.Context, message *dnsmessage.Message) (*dnsmessage.Message, error) {
-	message.ID = 0
-	_buffer := buf.StackNewSize(1024)
+func (t *HTTPSTransport) Exchange(ctx context.Context, message *dns.Msg) (*dns.Msg, error) {
+	message.Id = 0
+	_buffer := buf.StackNewSize(FixedPacketSize)
 	defer common.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
 	defer buffer.Release()
-	rawMessage, err := message.AppendPack(buffer.Index(0))
+	rawMessage, err := message.PackBuffer(buffer.FreeBytes())
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func (t *HTTPSTransport) Exchange(ctx context.Context, message *dnsmessage.Messa
 	if err != nil {
 		return nil, err
 	}
-	var responseMessage dnsmessage.Message
+	var responseMessage dns.Msg
 	err = responseMessage.Unpack(buffer.Bytes())
 	if err != nil {
 		return nil, err
