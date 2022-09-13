@@ -5,9 +5,11 @@ import (
 	"crypto/tls"
 	"encoding/binary"
 	"net"
+	"net/url"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
+	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
@@ -15,6 +17,26 @@ import (
 )
 
 var _ Transport = (*TLSTransport)(nil)
+
+func init() {
+	RegisterTransport([]string{"tls"}, CreateTLSTransport)
+}
+
+func CreateTLSTransport(ctx context.Context, dialer N.Dialer, link string) (Transport, error) {
+	serverURL, err := url.Parse(link)
+	if err != nil {
+		return nil, err
+	}
+	port := serverURL.Port()
+	if port == "" {
+		port = "853"
+	}
+	serverAddr := M.ParseSocksaddrHostPortStr(serverURL.Hostname(), port)
+	if !serverAddr.IsValid() {
+		return nil, E.New("invalid server address: ", serverAddr)
+	}
+	return NewTLSTransport(ctx, dialer, serverAddr), nil
+}
 
 type TLSTransport struct {
 	myTransportAdapter
@@ -29,12 +51,12 @@ func NewTLSTransport(ctx context.Context, dialer N.Dialer, destination M.Socksad
 }
 
 func (t *TLSTransport) DialContext(ctx context.Context, queryCtx context.Context) (net.Conn, error) {
-	conn, err := t.dialer.DialContext(ctx, N.NetworkTCP, t.destination)
+	conn, err := t.dialer.DialContext(ctx, N.NetworkTCP, t.serverAddr)
 	if err != nil {
 		return nil, err
 	}
 	tlsConn := tls.Client(conn, &tls.Config{
-		ServerName: t.destination.AddrString(),
+		ServerName: t.serverAddr.AddrString(),
 	})
 	err = tlsConn.HandshakeContext(queryCtx)
 	if err != nil {

@@ -17,7 +17,7 @@ import (
 	"github.com/miekg/dns"
 )
 
-const dnsMimeType = "application/dns-message"
+const MimeType = "application/dns-message"
 
 var _ Transport = (*HTTPSTransport)(nil)
 
@@ -26,9 +26,17 @@ type HTTPSTransport struct {
 	transport   *http.Transport
 }
 
-func NewHTTPSTransport(dialer N.Dialer, destination string) *HTTPSTransport {
+func init() {
+	RegisterTransport([]string{"https"}, CreateHTTPSTransport)
+}
+
+func CreateHTTPSTransport(ctx context.Context, dialer N.Dialer, link string) (Transport, error) {
+	return NewHTTPSTransport(dialer, link), nil
+}
+
+func NewHTTPSTransport(dialer N.Dialer, serverURL string) *HTTPSTransport {
 	return &HTTPSTransport{
-		destination: destination,
+		destination: serverURL,
 		transport: &http.Transport{
 			ForceAttemptHTTP2: true,
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -69,8 +77,8 @@ func (t *HTTPSTransport) Exchange(ctx context.Context, message *dns.Msg) (*dns.M
 	if err != nil {
 		return nil, err
 	}
-	request.Header.Set("content-type", dnsMimeType)
-	request.Header.Set("accept", dnsMimeType)
+	request.Header.Set("content-type", MimeType)
+	request.Header.Set("accept", MimeType)
 
 	client := &http.Client{Transport: t.transport}
 	response, err := client.Do(request)

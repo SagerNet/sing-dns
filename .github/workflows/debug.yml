@@ -37,6 +37,4 @@ jobs:
           go mod init build
           go get -v github.com/sagernet/sing-dns@$version
           popd
-          pushd test
-          go test -v ./...
-          popd
+          go build -v ./...

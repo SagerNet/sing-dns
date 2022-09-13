@@ -3,14 +3,28 @@ package dns
 import (
 	"context"
 	"net/netip"
+	"net/url"
 	"os"
 
 	E "github.com/sagernet/sing/common/exceptions"
+	N "github.com/sagernet/sing/common/network"
 
 	"github.com/miekg/dns"
 )
 
 var _ Transport = (*RCodeTransport)(nil)
+
+func init() {
+	RegisterTransport([]string{"rcode"}, CreateRCodeTransport)
+}
+
+func CreateRCodeTransport(ctx context.Context, dialer N.Dialer, link string) (Transport, error) {
+	serverURL, err := url.Parse(link)
+	if err != nil {
+		return nil, err
+	}
+	return NewRCodeTransport(serverURL.Host)
+}
 
 type RCodeTransport struct {
 	code RCodeError

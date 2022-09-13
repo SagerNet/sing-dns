@@ -8,17 +8,15 @@ import (
 	"sort"
 
 	"github.com/sagernet/sing/common"
+	N "github.com/sagernet/sing/common/network"
 
 	"github.com/miekg/dns"
 )
 
-var LocalTransportConstructor func() Transport
-
-func NewLocalTransport() Transport {
-	if LocalTransportConstructor != nil {
-		return LocalTransportConstructor()
-	}
-	return &LocalTransport{}
+func init() {
+	RegisterTransport([]string{"local"}, func(ctx context.Context, dialer N.Dialer, link string) (Transport, error) {
+		return &LocalTransport{}, nil
+	})
 }
 
 var _ Transport = (*LocalTransport)(nil)

@@ -6,11 +6,12 @@ import (
 	"net/url"
 
 	E "github.com/sagernet/sing/common/exceptions"
-	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
 	"github.com/miekg/dns"
 )
+
+type TransportConstructor = func(ctx context.Context, dialer N.Dialer, link string) (Transport, error)
 
 type Transport interface {
 	Start() error
@@ -20,51 +21,27 @@ type Transport interface {
 	Lookup(ctx context.Context, domain string, strategy DomainStrategy) ([]netip.Addr, error)
 }
 
-func NewTransport(ctx context.Context, dialer N.Dialer, address string) (Transport, error) {
-	if address == "local" {
-		return NewLocalTransport(), nil
+var transports map[string]TransportConstructor
+
+func RegisterTransport(schemes []string, constructor TransportConstructor) {
+	if transports == nil {
+		transports = make(map[string]TransportConstructor)
 	}
-	serverURL, err := url.Parse(address)
-	if err != nil {
-		return nil, err
+	for _, scheme := range schemes {
+		transports[scheme] = constructor
 	}
-	host := serverURL.Hostname()
-	if host == "" {
-		host = address
-	}
-	port := serverURL.Port()
-	switch serverURL.Scheme {
-	case "tls":
-		if port == "" {
-			port = "853"
-		}
-	case "quic":
-		if port == "" {
-			port = "853"
-		}
-	default:
-		if port == "" {
-			port = "53"
+}
+
+func CreateTransport(ctx context.Context, dialer N.Dialer, address string) (Transport, error) {
+	constructor := transports[address]
+	if constructor == nil {
+		serverURL, err := url.Parse(address)
+		if err == nil {
+			constructor = transports[serverURL.Scheme]
 		}
 	}
-	destination := M.ParseSocksaddrHostPortStr(host, port)
-	switch serverURL.Scheme {
-	case "", "udp":
-		return NewUDPTransport(ctx, dialer, destination), nil
-	case "tcp":
-		return NewTCPTransport(ctx, dialer, destination), nil
-	case "tls":
-		return NewTLSTransport(ctx, dialer, destination), nil
-	case "https":
-		return NewHTTPSTransport(dialer, serverURL.String()), nil
-	case "quic":
-		return NewQUICTransport(ctx, dialer, destination)
-	case "h3":
-		serverURL.Scheme = "https"
-		return NewHTTP3Transport(dialer, serverURL.String())
-	case "rcode":
-		return NewRCodeTransport(serverURL.Host)
-	default:
-		return nil, E.New("unknown dns scheme: " + serverURL.Scheme)
+	if constructor == nil {
+		return nil, E.New("unknown DNS server format: " + address)
 	}
+	return constructor(ctx, dialer, address)
 }

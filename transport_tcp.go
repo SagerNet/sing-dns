@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/binary"
 	"net"
+	"net/url"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
+	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
@@ -15,20 +17,40 @@ import (
 
 var _ Transport = (*TCPTransport)(nil)
 
+func init() {
+	RegisterTransport([]string{"tcp"}, CreateTCPTransport)
+}
+
+func CreateTCPTransport(ctx context.Context, dialer N.Dialer, link string) (Transport, error) {
+	serverURL, err := url.Parse(link)
+	if err != nil {
+		return nil, err
+	}
+	port := serverURL.Port()
+	if port == "" {
+		port = "53"
+	}
+	serverAddr := M.ParseSocksaddrHostPortStr(serverURL.Hostname(), port)
+	if !serverAddr.IsValid() {
+		return nil, E.New("invalid server address: ", serverAddr)
+	}
+	return NewTCPTransport(ctx, dialer, serverAddr), nil
+}
+
 type TCPTransport struct {
 	myTransportAdapter
 }
 
-func NewTCPTransport(ctx context.Context, dialer N.Dialer, destination M.Socksaddr) *TCPTransport {
+func NewTCPTransport(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr) *TCPTransport {
 	transport := &TCPTransport{
-		newAdapter(ctx, dialer, destination),
+		newAdapter(ctx, dialer, serverAddr),
 	}
 	transport.handler = transport
 	return transport
 }
 
 func (t *TCPTransport) DialContext(ctx context.Context, queryCtx context.Context) (net.Conn, error) {
-	return t.dialer.DialContext(ctx, N.NetworkTCP, t.destination)
+	return t.dialer.DialContext(ctx, N.NetworkTCP, t.serverAddr)
 }
 
 func (t *TCPTransport) ReadMessage(conn net.Conn) (*dns.Msg, error) {

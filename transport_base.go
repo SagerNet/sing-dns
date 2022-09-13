@@ -23,22 +23,22 @@ type myTransportHandler interface {
 }
 
 type myTransportAdapter struct {
-	ctx         context.Context
-	cancel      context.CancelFunc
-	dialer      N.Dialer
-	destination M.Socksaddr
-	handler     myTransportHandler
-	access      sync.RWMutex
-	conn        *dnsConnection
+	ctx        context.Context
+	cancel     context.CancelFunc
+	dialer     N.Dialer
+	serverAddr M.Socksaddr
+	handler    myTransportHandler
+	access     sync.RWMutex
+	conn       *dnsConnection
 }
 
-func newAdapter(ctx context.Context, dialer N.Dialer, destination M.Socksaddr) myTransportAdapter {
+func newAdapter(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr) myTransportAdapter {
 	ctx, cancel := context.WithCancel(ctx)
 	return myTransportAdapter{
-		ctx:         ctx,
-		cancel:      cancel,
-		dialer:      dialer,
-		destination: destination,
+		ctx:        ctx,
+		cancel:     cancel,
+		dialer:     dialer,
+		serverAddr: serverAddr,
 	}
 }
 

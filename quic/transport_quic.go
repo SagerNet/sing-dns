@@ -1,49 +1,70 @@
-//go:build with_quic
-
-package dns
+package quic
 
 import (
 	"context"
 	"crypto/tls"
 	"encoding/binary"
 	"net/netip"
+	"net/url"
 	"os"
 	"sync"
 
 	"github.com/sagernet/quic-go"
+	"github.com/sagernet/sing-dns"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
+	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
-	"github.com/miekg/dns"
+	mDNS "github.com/miekg/dns"
 )
 
-var _ Transport = (*QUICTransport)(nil)
+var _ dns.Transport = (*Transport)(nil)
 
-type QUICTransport struct {
-	ctx         context.Context
-	dialer      N.Dialer
-	destination M.Socksaddr
+func init() {
+	dns.RegisterTransport([]string{"quic"}, CreateTransport)
+}
+
+func CreateTransport(ctx context.Context, dialer N.Dialer, link string) (dns.Transport, error) {
+	serverURL, err := url.Parse(link)
+	if err != nil {
+		return nil, err
+	}
+	port := serverURL.Port()
+	if port == "" {
+		port = "853"
+	}
+	serverAddr := M.ParseSocksaddrHostPortStr(serverURL.Hostname(), port)
+	if !serverAddr.IsValid() {
+		return nil, E.New("invalid server address: ", serverAddr)
+	}
+	return NewTransport(ctx, dialer, serverAddr)
+}
+
+type Transport struct {
+	ctx        context.Context
+	dialer     N.Dialer
+	serverAddr M.Socksaddr
 
 	access     sync.Mutex
 	connection quic.EarlyConnection
 }
 
-func NewQUICTransport(ctx context.Context, dialer N.Dialer, destination M.Socksaddr) (*QUICTransport, error) {
-	return &QUICTransport{
-		ctx:         ctx,
-		dialer:      dialer,
-		destination: destination,
+func NewTransport(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr) (*Transport, error) {
+	return &Transport{
+		ctx:        ctx,
+		dialer:     dialer,
+		serverAddr: serverAddr,
 	}, nil
 }
 
-func (t *QUICTransport) Start() error {
+func (t *Transport) Start() error {
 	return nil
 }
 
-func (t *QUICTransport) Close() error {
+func (t *Transport) Close() error {
 	connection := t.connection
 	if connection != nil {
 		connection.CloseWithError(0, "")
@@ -51,11 +72,11 @@ func (t *QUICTransport) Close() error {
 	return nil
 }
 
-func (t *QUICTransport) Raw() bool {
+func (t *Transport) Raw() bool {
 	return true
 }
 
-func (t *QUICTransport) openConnection() (quic.EarlyConnection, error) {
+func (t *Transport) openConnection() (quic.EarlyConnection, error) {
 	connection := t.connection
 	if connection != nil && !common.Done(connection.Context()) {
 		return connection, nil
@@ -66,14 +87,14 @@ func (t *QUICTransport) openConnection() (quic.EarlyConnection, error) {
 	if connection != nil && !common.Done(connection.Context()) {
 		return connection, nil
 	}
-	conn, err := t.dialer.DialContext(t.ctx, N.NetworkUDP, t.destination)
+	conn, err := t.dialer.DialContext(t.ctx, N.NetworkUDP, t.serverAddr)
 	if err != nil {
 		return nil, err
 	}
 	earlyConnection, err := quic.DialEarly(
 		bufio.NewUnbindPacketConn(conn),
-		t.destination.UDPAddr(),
-		t.destination.AddrString(),
+		t.serverAddr.UDPAddr(),
+		t.serverAddr.AddrString(),
 		&tls.Config{NextProtos: []string{"doq"}},
 		nil,
 	)
@@ -84,9 +105,9 @@ func (t *QUICTransport) openConnection() (quic.EarlyConnection, error) {
 	return earlyConnection, nil
 }
 
-func (t *QUICTransport) Exchange(ctx context.Context, message *dns.Msg) (*dns.Msg, error) {
+func (t *Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
 	message.Id = 0
-	_buffer := buf.StackNewSize(FixedPacketSize)
+	_buffer := buf.StackNewSize(dns.FixedPacketSize)
 	defer common.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
 	defer buffer.Release()
@@ -122,7 +143,7 @@ func (t *QUICTransport) Exchange(ctx context.Context, message *dns.Msg) (*dns.Ms
 	if err != nil {
 		return nil, err
 	}
-	var responseMessage dns.Msg
+	var responseMessage mDNS.Msg
 	err = responseMessage.Unpack(buffer.Bytes())
 	if err != nil {
 		return nil, err
@@ -130,6 +151,6 @@ func (t *QUICTransport) Exchange(ctx context.Context, message *dns.Msg) (*dns.Ms
 	return &responseMessage, nil
 }
 
-func (t *QUICTransport) Lookup(ctx context.Context, domain string, strategy DomainStrategy) ([]netip.Addr, error) {
+func (t *Transport) Lookup(ctx context.Context, domain string, strategy dns.DomainStrategy) ([]netip.Addr, error) {
 	return nil, os.ErrInvalid
 }

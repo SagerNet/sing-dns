@@ -1,6 +1,4 @@
-//go:build with_quic
-
-package dns
+package quic
 
 import (
 	"bytes"
@@ -8,29 +6,44 @@ import (
 	"crypto/tls"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"os"
 
 	"github.com/sagernet/quic-go"
 	"github.com/sagernet/quic-go/http3"
+	"github.com/sagernet/sing-dns"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
-	"github.com/miekg/dns"
+	mDNS "github.com/miekg/dns"
 )
 
-var _ Transport = (*HTTP3Transport)(nil)
+var _ dns.Transport = (*HTTP3Transport)(nil)
+
+func init() {
+	dns.RegisterTransport([]string{"h3"}, CreateHTTP3Transport)
+}
+
+func CreateHTTP3Transport(ctx context.Context, dialer N.Dialer, link string) (dns.Transport, error) {
+	linkURL, err := url.Parse(link)
+	if err != nil {
+		return nil, err
+	}
+	linkURL.Scheme = "http3"
+	return NewHTTP3Transport(dialer, linkURL.String()), nil
+}
 
 type HTTP3Transport struct {
 	destination string
 	transport   *http3.RoundTripper
 }
 
-func NewHTTP3Transport(dialer N.Dialer, destination string) (*HTTP3Transport, error) {
+func NewHTTP3Transport(dialer N.Dialer, serverURL string) *HTTP3Transport {
 	return &HTTP3Transport{
-		destination: destination,
+		destination: serverURL,
 		transport: &http3.RoundTripper{
 			Dial: func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
 				destinationAddr := M.ParseSocksaddr(addr)
@@ -44,7 +57,7 @@ func NewHTTP3Transport(dialer N.Dialer, destination string) (*HTTP3Transport, er
 				NextProtos: []string{"dns"},
 			},
 		},
-	}, nil
+	}
 }
 
 func (t *HTTP3Transport) Start() error {
@@ -59,9 +72,9 @@ func (t *HTTP3Transport) Raw() bool {
 	return true
 }
 
-func (t *HTTP3Transport) Exchange(ctx context.Context, message *dns.Msg) (*dns.Msg, error) {
+func (t *HTTP3Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
 	message.Id = 0
-	_buffer := buf.StackNewSize(FixedPacketSize)
+	_buffer := buf.StackNewSize(dns.FixedPacketSize)
 	defer common.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
 	defer buffer.Release()
@@ -74,8 +87,8 @@ func (t *HTTP3Transport) Exchange(ctx context.Context, message *dns.Msg) (*dns.M
 	if err != nil {
 		return nil, err
 	}
-	request.Header.Set("content-type", dnsMimeType)
-	request.Header.Set("accept", dnsMimeType)
+	request.Header.Set("content-type", dns.MimeType)
+	request.Header.Set("accept", dns.MimeType)
 
 	client := &http.Client{Transport: t.transport}
 	response, err := client.Do(request)
@@ -88,7 +101,7 @@ func (t *HTTP3Transport) Exchange(ctx context.Context, message *dns.Msg) (*dns.M
 	if err != nil {
 		return nil, err
 	}
-	var responseMessage dns.Msg
+	var responseMessage mDNS.Msg
 	err = responseMessage.Unpack(buffer.Bytes())
 	if err != nil {
 		return nil, err
@@ -96,6 +109,6 @@ func (t *HTTP3Transport) Exchange(ctx context.Context, message *dns.Msg) (*dns.M
 	return &responseMessage, nil
 }
 
-func (t *HTTP3Transport) Lookup(ctx context.Context, domain string, strategy DomainStrategy) ([]netip.Addr, error) {
+func (t *HTTP3Transport) Lookup(ctx context.Context, domain string, strategy dns.DomainStrategy) ([]netip.Addr, error) {
 	return nil, os.ErrInvalid
 }

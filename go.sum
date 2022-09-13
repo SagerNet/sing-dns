@@ -43,8 +43,8 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/sagernet/quic-go v0.0.0-20220818150011-de611ab3e2bb h1:wc0yQ+SBn4TaTYRwpwvEm3nc4eRdxk6vtRbouLVZAzk=
 github.com/sagernet/quic-go v0.0.0-20220818150011-de611ab3e2bb/go.mod h1:MIccjRKnPTjWwAOpl+AUGWOkzyTd9tERytudxu+1ra4=
-github.com/sagernet/sing v0.0.0-20220913004915-27ddefbb8921 h1:xUHzlIbdlPV/fkToIO9futp9lmKIY+72ezk/whQ8XsI=
-github.com/sagernet/sing v0.0.0-20220913004915-27ddefbb8921/go.mod h1:kZvzh1VDa/Dg/Bt5WaYKU0jl5ept8KKDpl3Ay4gRtRQ=
+github.com/sagernet/sing v0.0.0-20220913115000-a606585cf729 h1:dTe6z7k4XvU8y8KD53qU8q56M/ia4l0c0wjEUH82ezI=
+github.com/sagernet/sing v0.0.0-20220913115000-a606585cf729/go.mod h1:kZvzh1VDa/Dg/Bt5WaYKU0jl5ept8KKDpl3Ay4gRtRQ=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/testify v1.5.1 h1:nOGnQDM7FYENwehXlg/kFVnos3rEvtKTjRvOWSzb6H4=
 github.com/stretchr/testify v1.5.1/go.mod h1:5W2xD1RspED5o8YsWQXVCued0rvSQ+mT+I5cxcmMvtA=
