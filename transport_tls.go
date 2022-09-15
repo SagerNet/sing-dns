@@ -27,27 +27,25 @@ func CreateTLSTransport(ctx context.Context, dialer N.Dialer, link string) (Tran
 	if err != nil {
 		return nil, err
 	}
-	port := serverURL.Port()
-	if port == "" {
-		port = "853"
-	}
-	serverAddr := M.ParseSocksaddrHostPortStr(serverURL.Hostname(), port)
-	if !serverAddr.IsValid() {
-		return nil, E.New("invalid server address: ", serverAddr)
-	}
-	return NewTLSTransport(ctx, dialer, serverAddr), nil
+	return NewTLSTransport(ctx, dialer, M.ParseSocksaddr(serverURL.Host))
 }
 
 type TLSTransport struct {
 	myTransportAdapter
 }
 
-func NewTLSTransport(ctx context.Context, dialer N.Dialer, destination M.Socksaddr) *TLSTransport {
+func NewTLSTransport(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr) (*TLSTransport, error) {
+	if !serverAddr.IsValid() {
+		return nil, E.New("invalid server address")
+	}
+	if serverAddr.Port == 0 {
+		serverAddr.Port = 853
+	}
 	transport := &TLSTransport{
-		newAdapter(ctx, dialer, destination),
+		newAdapter(ctx, dialer, serverAddr),
 	}
 	transport.handler = transport
-	return transport
+	return transport, nil
 }
 
 func (t *TLSTransport) DialContext(ctx context.Context, queryCtx context.Context) (net.Conn, error) {

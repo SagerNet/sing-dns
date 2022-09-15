@@ -4,7 +4,6 @@ import (
 	"context"
 	"net"
 	"net/netip"
-	"strings"
 	"time"
 
 	"github.com/sagernet/sing/common"
@@ -91,7 +90,7 @@ func (c *Client) Exchange(ctx context.Context, transport Transport, message *dns
 }
 
 func (c *Client) Lookup(ctx context.Context, transport Transport, domain string, strategy DomainStrategy) ([]netip.Addr, error) {
-	if strings.HasPrefix(domain, ".") {
+	if dns.IsFqdn(domain) {
 		domain = domain[:len(domain)-1]
 	}
 	dnsName := dns.Fqdn(domain)

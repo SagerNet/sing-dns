@@ -28,29 +28,27 @@ func CreateUDPTransport(ctx context.Context, dialer N.Dialer, link string) (Tran
 		return nil, err
 	}
 	if serverURL.Scheme == "" {
-		return NewUDPTransport(ctx, dialer, M.ParseSocksaddr(link)), nil
+		return NewUDPTransport(ctx, dialer, M.ParseSocksaddr(link))
 	}
-	port := serverURL.Port()
-	if port == "" {
-		port = "53"
-	}
-	serverAddr := M.ParseSocksaddrHostPortStr(serverURL.Hostname(), port)
-	if !serverAddr.IsValid() {
-		return nil, E.New("invalid server address: ", serverAddr)
-	}
-	return NewUDPTransport(ctx, dialer, serverAddr), nil
+	return NewUDPTransport(ctx, dialer, M.ParseSocksaddr(serverURL.Host))
 }
 
 type UDPTransport struct {
 	myTransportAdapter
 }
 
-func NewUDPTransport(ctx context.Context, dialer N.Dialer, destination M.Socksaddr) *UDPTransport {
+func NewUDPTransport(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr) (*UDPTransport, error) {
+	if !serverAddr.IsValid() {
+		return nil, E.New("invalid server address")
+	}
+	if serverAddr.Port == 0 {
+		serverAddr.Port = 53
+	}
 	transport := &UDPTransport{
-		newAdapter(ctx, dialer, destination),
+		newAdapter(ctx, dialer, serverAddr),
 	}
 	transport.handler = transport
-	return transport
+	return transport, nil
 }
 
 func (t *UDPTransport) DialContext(ctx context.Context, queryCtx context.Context) (net.Conn, error) {

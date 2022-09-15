@@ -26,27 +26,25 @@ func CreateTCPTransport(ctx context.Context, dialer N.Dialer, link string) (Tran
 	if err != nil {
 		return nil, err
 	}
-	port := serverURL.Port()
-	if port == "" {
-		port = "53"
-	}
-	serverAddr := M.ParseSocksaddrHostPortStr(serverURL.Hostname(), port)
-	if !serverAddr.IsValid() {
-		return nil, E.New("invalid server address: ", serverAddr)
-	}
-	return NewTCPTransport(ctx, dialer, serverAddr), nil
+	return NewTCPTransport(ctx, dialer, M.ParseSocksaddr(serverURL.Host))
 }
 
 type TCPTransport struct {
 	myTransportAdapter
 }
 
-func NewTCPTransport(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr) *TCPTransport {
+func NewTCPTransport(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr) (*TCPTransport, error) {
+	if !serverAddr.IsValid() {
+		return nil, E.New("invalid server address")
+	}
+	if serverAddr.Port == 0 {
+		serverAddr.Port = 53
+	}
 	transport := &TCPTransport{
 		newAdapter(ctx, dialer, serverAddr),
 	}
 	transport.handler = transport
-	return transport
+	return transport, nil
 }
 
 func (t *TCPTransport) DialContext(ctx context.Context, queryCtx context.Context) (net.Conn, error) {
@@ -58,6 +56,9 @@ func (t *TCPTransport) ReadMessage(conn net.Conn) (*dns.Msg, error) {
 	err := binary.Read(conn, binary.BigEndian, &length)
 	if err != nil {
 		return nil, err
+	}
+	if length < 10 {
+		return nil, dns.ErrShortRead
 	}
 	_buffer := buf.StackNewSize(int(length))
 	defer common.KeepAlive(_buffer)

@@ -32,15 +32,7 @@ func CreateTransport(ctx context.Context, dialer N.Dialer, link string) (dns.Tra
 	if err != nil {
 		return nil, err
 	}
-	port := serverURL.Port()
-	if port == "" {
-		port = "853"
-	}
-	serverAddr := M.ParseSocksaddrHostPortStr(serverURL.Hostname(), port)
-	if !serverAddr.IsValid() {
-		return nil, E.New("invalid server address: ", serverAddr)
-	}
-	return NewTransport(ctx, dialer, serverAddr)
+	return NewTransport(ctx, dialer, M.ParseSocksaddr(serverURL.Host))
 }
 
 type Transport struct {
@@ -53,6 +45,12 @@ type Transport struct {
 }
 
 func NewTransport(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr) (*Transport, error) {
+	if !serverAddr.IsValid() {
+		return nil, E.New("invalid server address")
+	}
+	if serverAddr.Port == 0 {
+		serverAddr.Port = 853
+	}
 	return &Transport{
 		ctx:        ctx,
 		dialer:     dialer,
