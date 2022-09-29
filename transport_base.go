@@ -28,7 +28,7 @@ type myTransportAdapter struct {
 	dialer     N.Dialer
 	serverAddr M.Socksaddr
 	handler    myTransportHandler
-	access     sync.RWMutex
+	access     sync.Mutex
 	conn       *dnsConnection
 }
 
@@ -86,15 +86,11 @@ func (t *myTransportAdapter) recvLoop(conn *dnsConnection) {
 			if err != nil {
 				return err
 			}
-			conn.access.Lock()
-			callback, loaded := conn.callbacks[message.Id]
-			if loaded {
-				delete(conn.callbacks, message.Id)
-			}
-			conn.access.Unlock()
-			if loaded {
+			conn.access.RLock()
+			if callback, loaded := conn.callbacks[message.Id]; loaded {
 				callback <- message
 			}
+			conn.access.RUnlock()
 		}
 	})
 	group.Cleanup(func() {
@@ -121,17 +117,17 @@ func (t *myTransportAdapter) Exchange(ctx context.Context, message *dns.Msg) (*d
 }
 
 func (t *myTransportAdapter) exchange(ctx context.Context, message *dns.Msg) (*dns.Msg, error) {
-	callback := make(chan *dns.Msg)
-	defer close(callback)
 	conn, err := t.open(ctx)
 	if err != nil {
 		return nil, err
 	}
+	callback := make(chan *dns.Msg)
 	conn.access.Lock()
 	conn.queryId++
 	message.Id = conn.queryId
 	conn.callbacks[message.Id] = callback
 	conn.access.Unlock()
+	defer t.cleanup(conn, message.Id, callback)
 	conn.writeAccess.Lock()
 	err = t.handler.WriteMessage(conn, message)
 	conn.writeAccess.Unlock()
@@ -148,6 +144,13 @@ func (t *myTransportAdapter) exchange(ctx context.Context, message *dns.Msg) (*d
 		conn.cancel()
 		return nil, ctx.Err()
 	}
+}
+
+func (t *myTransportAdapter) cleanup(conn *dnsConnection, messageId uint16, callback chan *dns.Msg) {
+	conn.access.Lock()
+	delete(conn.callbacks, messageId)
+	conn.access.Unlock()
+	close(callback)
 }
 
 func (t *myTransportAdapter) Close() error {
@@ -172,7 +175,7 @@ type dnsConnection struct {
 	net.Conn
 	ctx         context.Context
 	cancel      context.CancelFunc
-	access      sync.Mutex
+	access      sync.RWMutex
 	writeAccess sync.Mutex
 	err         error
 	queryId     uint16
