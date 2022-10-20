@@ -32,7 +32,7 @@ func CreateHTTP3Transport(ctx context.Context, dialer N.Dialer, link string) (dn
 	if err != nil {
 		return nil, err
 	}
-	linkURL.Scheme = "http3"
+	linkURL.Scheme = "https"
 	return NewHTTP3Transport(dialer, linkURL.String()), nil
 }
 
