@@ -225,7 +225,7 @@ func (c *Client) Lookup(ctx context.Context, transport Transport, domain string,
 					message6.Answer = append(message6.Answer, &dns.AAAA{
 						Hdr: dns.RR_Header{
 							Name:   question6.Name,
-							Rrtype: dns.TypeA,
+							Rrtype: dns.TypeAAAA,
 							Class:  dns.ClassINET,
 							Ttl:    DefaultTTL,
 						},
@@ -303,14 +303,14 @@ func (c *Client) exchangeToLookup(ctx context.Context, transport Transport, mess
 				A: address.AsSlice(),
 			})
 		} else {
-			response.Answer = append(response.Answer, &dns.A{
+			response.Answer = append(response.Answer, &dns.AAAA{
 				Hdr: dns.RR_Header{
 					Name:   question.Name,
 					Rrtype: dns.TypeAAAA,
 					Class:  dns.ClassINET,
 					Ttl:    DefaultTTL,
 				},
-				A: address.AsSlice(),
+				AAAA: address.AsSlice(),
 			})
 		}
 	}
@@ -370,10 +370,13 @@ func messageToAddresses(response *dns.Msg) ([]netip.Addr, error) {
 }
 
 func wrapError(err error) error {
-	if dnsErr, isDNSError := err.(*net.DNSError); isDNSError {
+	switch dnsErr := err.(type) {
+	case *net.DNSError:
 		if dnsErr.IsNotFound {
 			return RCodeNameError
 		}
+	case *net.AddrError:
+		return RCodeNameError
 	}
 	return err
 }

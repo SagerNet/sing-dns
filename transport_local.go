@@ -8,21 +8,34 @@ import (
 	"sort"
 
 	"github.com/sagernet/sing/common"
+	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
 	"github.com/miekg/dns"
 )
 
 func init() {
-	RegisterTransport([]string{"local"}, func(ctx context.Context, dialer N.Dialer, link string) (Transport, error) {
-		return &LocalTransport{}, nil
-	})
+	RegisterTransport([]string{"local"}, CreateLocalTransport)
+}
+
+func CreateLocalTransport(ctx context.Context, dialer N.Dialer, link string) (Transport, error) {
+	return NewLocalTransport(dialer), nil
 }
 
 var _ Transport = (*LocalTransport)(nil)
 
 type LocalTransport struct {
 	resolver net.Resolver
+}
+
+func NewLocalTransport(dialer N.Dialer) *LocalTransport {
+	return &LocalTransport{
+		resolver: net.Resolver{
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				return dialer.DialContext(ctx, N.NetworkName(network), M.ParseSocksaddr(address))
+			},
+		},
+	}
 }
 
 func (t *LocalTransport) Start() error {
