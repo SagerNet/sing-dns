@@ -105,18 +105,16 @@ func (t *Transport) openConnection() (quic.EarlyConnection, error) {
 
 func (t *Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
 	message.Id = 0
-	_buffer := buf.StackNewSize(dns.FixedPacketSize)
-	defer common.KeepAlive(_buffer)
-	buffer := common.Dup(_buffer)
-	defer buffer.Release()
-	buffer.Resize(2, 0)
-	rawMessage, err := message.PackBuffer(buffer.FreeBytes())
+	rawMessage, err := message.Pack()
 	if err != nil {
 		return nil, err
 	}
-	messageLen := len(rawMessage)
-	buffer.Truncate(messageLen)
-	binary.BigEndian.PutUint16(buffer.ExtendHeader(2), uint16(messageLen))
+	_buffer := buf.StackNewSize(2 + len(rawMessage))
+	defer common.KeepAlive(_buffer)
+	buffer := common.Dup(_buffer)
+	defer buffer.Release()
+	common.Must(binary.Write(buffer, binary.BigEndian, uint16(len(rawMessage))))
+	common.Must1(buffer.Write(rawMessage))
 	conn, err := t.openConnection()
 	if conn == nil {
 		return nil, err
@@ -135,9 +133,14 @@ func (t *Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg,
 	if err != nil {
 		return nil, err
 	}
-	messageLen = int(binary.BigEndian.Uint16(buffer.Bytes()))
+	responseLen := int(binary.BigEndian.Uint16(buffer.Bytes()))
 	buffer.FullReset()
-	_, err = buffer.ReadFullFrom(stream, messageLen)
+	if buffer.FreeLen() < responseLen {
+		buffer.Release()
+		_buffer = buf.StackNewSize(responseLen)
+		buffer = common.Dup(_buffer)
+	}
+	_, err = buffer.ReadFullFrom(stream, responseLen)
 	if err != nil {
 		return nil, err
 	}

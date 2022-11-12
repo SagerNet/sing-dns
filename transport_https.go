@@ -4,13 +4,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"io"
 	"net"
 	"net/http"
 	"net/netip"
 	"os"
 
-	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
@@ -64,16 +63,11 @@ func (t *HTTPSTransport) Raw() bool {
 
 func (t *HTTPSTransport) Exchange(ctx context.Context, message *dns.Msg) (*dns.Msg, error) {
 	message.Id = 0
-	_buffer := buf.StackNewSize(FixedPacketSize)
-	defer common.KeepAlive(_buffer)
-	buffer := common.Dup(_buffer)
-	defer buffer.Release()
-	rawMessage, err := message.PackBuffer(buffer.FreeBytes())
+	rawMessage, err := message.Pack()
 	if err != nil {
 		return nil, err
 	}
-	buffer.Truncate(len(rawMessage))
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, t.destination, bytes.NewReader(buffer.Bytes()))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, t.destination, bytes.NewReader(rawMessage))
 	if err != nil {
 		return nil, err
 	}
@@ -86,13 +80,12 @@ func (t *HTTPSTransport) Exchange(ctx context.Context, message *dns.Msg) (*dns.M
 		return nil, err
 	}
 	defer response.Body.Close()
-	buffer.FullReset()
-	_, err = buffer.ReadFrom(response.Body)
+	rawMessage, err = io.ReadAll(response.Body)
 	if err != nil {
 		return nil, err
 	}
 	var responseMessage dns.Msg
-	err = responseMessage.Unpack(buffer.Bytes())
+	err = responseMessage.Unpack(rawMessage)
 	if err != nil {
 		return nil, err
 	}

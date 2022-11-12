@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"io"
 	"net/http"
 	"net/netip"
 	"net/url"
@@ -12,8 +13,6 @@ import (
 	"github.com/sagernet/quic-go"
 	"github.com/sagernet/quic-go/http3"
 	"github.com/sagernet/sing-dns"
-	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -74,16 +73,11 @@ func (t *HTTP3Transport) Raw() bool {
 
 func (t *HTTP3Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
 	message.Id = 0
-	_buffer := buf.StackNewSize(dns.FixedPacketSize)
-	defer common.KeepAlive(_buffer)
-	buffer := common.Dup(_buffer)
-	defer buffer.Release()
-	rawMessage, err := message.PackBuffer(buffer.FreeBytes())
+	rawMessage, err := message.Pack()
 	if err != nil {
 		return nil, err
 	}
-	buffer.Truncate(len(rawMessage))
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, t.destination, bytes.NewReader(buffer.Bytes()))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, t.destination, bytes.NewReader(rawMessage))
 	if err != nil {
 		return nil, err
 	}
@@ -96,13 +90,9 @@ func (t *HTTP3Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS
 		return nil, err
 	}
 	defer response.Body.Close()
-	buffer.FullReset()
-	_, err = buffer.ReadFrom(response.Body)
-	if err != nil {
-		return nil, err
-	}
+	rawMessage, err = io.ReadAll(response.Body)
 	var responseMessage mDNS.Msg
-	err = responseMessage.Unpack(buffer.Bytes())
+	err = responseMessage.Unpack(rawMessage)
 	if err != nil {
 		return nil, err
 	}

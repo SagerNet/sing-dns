@@ -14,7 +14,7 @@ import (
 	"github.com/miekg/dns"
 )
 
-const FixedPacketSize = 4096
+const FixedPacketSize = 16384
 
 var _ Transport = (*UDPTransport)(nil)
 
@@ -70,11 +70,7 @@ func (t *UDPTransport) ReadMessage(conn net.Conn) (*dns.Msg, error) {
 }
 
 func (t *UDPTransport) WriteMessage(conn net.Conn, message *dns.Msg) error {
-	_buffer := buf.StackNewSize(FixedPacketSize)
-	defer common.KeepAlive(_buffer)
-	buffer := common.Dup(_buffer)
-	defer buffer.Release()
-	rawMessage, err := message.PackBuffer(buffer.FreeBytes())
+	rawMessage, err := message.Pack()
 	if err != nil {
 		return err
 	}

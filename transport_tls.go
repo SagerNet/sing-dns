@@ -84,16 +84,15 @@ func (t *TLSTransport) ReadMessage(conn net.Conn) (*dns.Msg, error) {
 }
 
 func (t *TLSTransport) WriteMessage(conn net.Conn, message *dns.Msg) error {
-	_buffer := buf.StackNewSize(4096)
-	defer common.KeepAlive(_buffer)
-	buffer := common.Dup(_buffer)
-	defer buffer.Release()
-	buffer.Resize(2, 0)
-	rawMessage, err := message.PackBuffer(buffer.FreeBytes())
+	rawMessage, err := message.Pack()
 	if err != nil {
 		return err
 	}
-	buffer.Resize(0, 2+len(rawMessage))
-	binary.BigEndian.PutUint16(buffer.To(2), uint16(len(rawMessage)))
+	_buffer := buf.StackNewSize(2 + len(rawMessage))
+	defer common.KeepAlive(_buffer)
+	buffer := common.Dup(_buffer)
+	defer buffer.Release()
+	common.Must(binary.Write(buffer, binary.BigEndian, uint16(len(rawMessage))))
+	common.Must1(buffer.Write(rawMessage))
 	return common.Error(conn.Write(buffer.Bytes()))
 }
