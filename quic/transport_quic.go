@@ -19,6 +19,7 @@ import (
 	N "github.com/sagernet/sing/common/network"
 
 	mDNS "github.com/miekg/dns"
+	"errors"
 )
 
 var _ dns.Transport = (*Transport)(nil)
@@ -104,6 +105,30 @@ func (t *Transport) openConnection() (quic.EarlyConnection, error) {
 }
 
 func (t *Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
+	var (
+		conn     quic.Connection
+		err      error
+		response *mDNS.Msg
+	)
+	for i := 0; i < 2; i++ {
+		conn, err = t.openConnection()
+		if conn == nil {
+			return nil, err
+		}
+		response, err = t.exchange(ctx, message, conn)
+		if err == nil {
+			return response, nil
+		} else if !isQUICRetryError(err) {
+			return nil, err
+		} else {
+			conn.CloseWithError(quic.ApplicationErrorCode(0), "")
+			continue
+		}
+	}
+	return nil, err
+}
+
+func (t *Transport) exchange(ctx context.Context, message *mDNS.Msg, conn quic.Connection) (*mDNS.Msg, error) {
 	message.Id = 0
 	rawMessage, err := message.Pack()
 	if err != nil {
@@ -115,10 +140,6 @@ func (t *Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg,
 	defer buffer.Release()
 	common.Must(binary.Write(buffer, binary.BigEndian, uint16(len(rawMessage))))
 	common.Must1(buffer.Write(rawMessage))
-	conn, err := t.openConnection()
-	if conn == nil {
-		return nil, err
-	}
 	stream, err := conn.OpenStreamSync(ctx)
 	if err != nil {
 		return nil, err
@@ -154,4 +175,33 @@ func (t *Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg,
 
 func (t *Transport) Lookup(ctx context.Context, domain string, strategy dns.DomainStrategy) ([]netip.Addr, error) {
 	return nil, os.ErrInvalid
+}
+
+// https://github.com/AdguardTeam/dnsproxy/blob/fd1868577652c639cce3da00e12ca548f421baf1/upstream/upstream_quic.go#L394
+func isQUICRetryError(err error) (ok bool) {
+	var qAppErr *quic.ApplicationError
+	if errors.As(err, &qAppErr) && qAppErr.ErrorCode == 0 {
+		return true
+	}
+
+	var qIdleErr *quic.IdleTimeoutError
+	if errors.As(err, &qIdleErr) {
+		return true
+	}
+
+	var resetErr *quic.StatelessResetError
+	if errors.As(err, &resetErr) {
+		return true
+	}
+
+	var qTransportError *quic.TransportError
+	if errors.As(err, &qTransportError) && qTransportError.ErrorCode == quic.NoError {
+		return true
+	}
+
+	if errors.Is(err, quic.Err0RTTRejected) {
+		return true
+	}
+
+	return false
 }
