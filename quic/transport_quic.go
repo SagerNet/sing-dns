@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/binary"
+	"errors"
 	"net/netip"
 	"net/url"
 	"os"
@@ -15,11 +16,11 @@ import (
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
 	mDNS "github.com/miekg/dns"
-	"errors"
 )
 
 var _ dns.Transport = (*Transport)(nil)
@@ -28,7 +29,7 @@ func init() {
 	dns.RegisterTransport([]string{"quic"}, CreateTransport)
 }
 
-func CreateTransport(ctx context.Context, dialer N.Dialer, link string) (dns.Transport, error) {
+func CreateTransport(ctx context.Context, logger logger.ContextLogger, dialer N.Dialer, link string) (dns.Transport, error) {
 	serverURL, err := url.Parse(link)
 	if err != nil {
 		return nil, err

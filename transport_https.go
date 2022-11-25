@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"os"
 
+	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
@@ -29,7 +30,7 @@ func init() {
 	RegisterTransport([]string{"https"}, CreateHTTPSTransport)
 }
 
-func CreateHTTPSTransport(ctx context.Context, dialer N.Dialer, link string) (Transport, error) {
+func CreateHTTPSTransport(ctx context.Context, logger logger.ContextLogger, dialer N.Dialer, link string) (Transport, error) {
 	return NewHTTPSTransport(dialer, link), nil
 }
 

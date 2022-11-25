@@ -14,6 +14,7 @@ import (
 	"github.com/sagernet/quic-go/http3"
 	"github.com/sagernet/sing-dns"
 	"github.com/sagernet/sing/common/bufio"
+	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
@@ -26,7 +27,7 @@ func init() {
 	dns.RegisterTransport([]string{"h3"}, CreateHTTP3Transport)
 }
 
-func CreateHTTP3Transport(ctx context.Context, dialer N.Dialer, link string) (dns.Transport, error) {
+func CreateHTTP3Transport(ctx context.Context, logger logger.ContextLogger, dialer N.Dialer, link string) (dns.Transport, error) {
 	linkURL, err := url.Parse(link)
 	if err != nil {
 		return nil, err

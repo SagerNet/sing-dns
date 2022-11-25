@@ -6,12 +6,13 @@ import (
 	"net/url"
 
 	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/logger"
 	N "github.com/sagernet/sing/common/network"
 
 	"github.com/miekg/dns"
 )
 
-type TransportConstructor = func(ctx context.Context, dialer N.Dialer, link string) (Transport, error)
+type TransportConstructor = func(ctx context.Context, logger logger.ContextLogger, dialer N.Dialer, link string) (Transport, error)
 
 type Transport interface {
 	Start() error
@@ -32,7 +33,7 @@ func RegisterTransport(schemes []string, constructor TransportConstructor) {
 	}
 }
 
-func CreateTransport(ctx context.Context, dialer N.Dialer, address string) (Transport, error) {
+func CreateTransport(ctx context.Context, logger logger.ContextLogger, dialer N.Dialer, address string) (Transport, error) {
 	constructor := transports[address]
 	if constructor == nil {
 		serverURL, err := url.Parse(address)
@@ -43,5 +44,5 @@ func CreateTransport(ctx context.Context, dialer N.Dialer, address string) (Tran
 	if constructor == nil {
 		return nil, E.New("unknown DNS server format: " + address)
 	}
-	return constructor(ctx, dialer, address)
+	return constructor(ctx, logger, dialer, address)
 }

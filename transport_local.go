@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
@@ -18,7 +19,7 @@ func init() {
 	RegisterTransport([]string{"local"}, CreateLocalTransport)
 }
 
-func CreateLocalTransport(ctx context.Context, dialer N.Dialer, link string) (Transport, error) {
+func CreateLocalTransport(ctx context.Context, logger logger.ContextLogger, dialer N.Dialer, link string) (Transport, error) {
 	return NewLocalTransport(dialer), nil
 }
 

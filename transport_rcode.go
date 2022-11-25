@@ -7,6 +7,7 @@ import (
 	"os"
 
 	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/logger"
 	N "github.com/sagernet/sing/common/network"
 
 	"github.com/miekg/dns"
@@ -18,7 +19,7 @@ func init() {
 	RegisterTransport([]string{"rcode"}, CreateRCodeTransport)
 }
 
-func CreateRCodeTransport(ctx context.Context, dialer N.Dialer, link string) (Transport, error) {
+func CreateRCodeTransport(ctx context.Context, logger logger.ContextLogger, dialer N.Dialer, link string) (Transport, error) {
 	serverURL, err := url.Parse(link)
 	if err != nil {
 		return nil, err
