@@ -54,10 +54,10 @@ func (c *Client) Exchange(ctx context.Context, transport Transport, message *dns
 	question := message.Question[0]
 	disableCache := c.disableCache || DisableCacheFromContext(ctx)
 	if !disableCache {
-		cachedAnswer, cached := c.cache.Load(question)
+		response, cached := c.loadResponse(question)
 		if cached {
-			cachedAnswer.Id = message.Id
-			return cachedAnswer, nil
+			response.Id = message.Id
+			return response, nil
 		}
 	}
 	if !transport.Raw() {
@@ -82,6 +82,7 @@ func (c *Client) Exchange(ctx context.Context, transport Transport, message *dns
 	if err != nil {
 		return nil, err
 	}
+
 	response.Id = messageId
 	if !disableCache {
 		c.storeCache(question, response)
@@ -258,8 +259,8 @@ func (c *Client) storeCache(question dns.Question, message *dns.Msg) {
 			timeToLive = int(answer.Header().Ttl)
 		}
 	}
-	expire := time.Now().Add(time.Second * time.Duration(timeToLive))
-	c.cache.StoreWithExpire(question, message, expire)
+	expireAt := time.Now().Add(time.Second * time.Duration(timeToLive))
+	c.cache.StoreWithExpire(question, message, expireAt)
 }
 
 func (c *Client) exchangeToLookup(ctx context.Context, transport Transport, message *dns.Msg, question dns.Question) (*dns.Msg, error) {
@@ -344,11 +345,39 @@ func (c *Client) lookupToExchange(ctx context.Context, transport Transport, name
 }
 
 func (c *Client) questionCache(question dns.Question) ([]netip.Addr, error) {
-	response, cached := c.cache.Load(question)
+	response, cached := c.loadResponse(question)
 	if !cached {
 		return nil, ErrNotCached
 	}
 	return messageToAddresses(response)
+}
+
+func (c *Client) loadResponse(question dns.Question) (*dns.Msg, bool) {
+	if c.disableExpire {
+		response, loaded := c.cache.Load(question)
+		if !loaded {
+			return nil, false
+		}
+		return response.Copy(), true
+	} else {
+		cachedAnswer, expireAt, loaded := c.cache.LoadWithExpire(question)
+		if !loaded {
+			return nil, false
+		}
+		if expireAt.Before(time.Now()) {
+			c.cache.Delete(question)
+			return nil, false
+		}
+		response := cachedAnswer.Copy()
+		for _, rr := range response.Answer {
+			ttl := expireAt.Sub(time.Now()).Seconds()
+			if ttl < 0 {
+				ttl = 0
+			}
+			rr.Header().Ttl = uint32(ttl)
+		}
+		return response, true
+	}
 }
 
 func messageToAddresses(response *dns.Msg) ([]netip.Addr, error) {
