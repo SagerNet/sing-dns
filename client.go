@@ -9,6 +9,7 @@ import (
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/cache"
 	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/task"
 
@@ -25,13 +26,16 @@ var (
 type Client struct {
 	disableCache  bool
 	disableExpire bool
-	cache         *cache.LruCache[dns.Question, *dns.Msg]
+	logger        logger.ContextLogger
+
+	cache *cache.LruCache[dns.Question, *dns.Msg]
 }
 
-func NewClient(disableCache bool, disableExpire bool) *Client {
+func NewClient(disableCache bool, disableExpire bool, logger logger.ContextLogger) *Client {
 	client := &Client{
 		disableCache:  disableCache,
 		disableExpire: disableExpire,
+		logger:        logger,
 	}
 	if !disableCache {
 		client.cache = cache.New[dns.Question, *dns.Msg]()
@@ -41,6 +45,9 @@ func NewClient(disableCache bool, disableExpire bool) *Client {
 
 func (c *Client) Exchange(ctx context.Context, transport Transport, message *dns.Msg, strategy DomainStrategy) (*dns.Msg, error) {
 	if len(message.Question) != 1 {
+		if c.logger != nil {
+			c.logger.WarnContext(ctx, "bad question size: ", len(message.Question))
+		}
 		responseMessage := dns.Msg{
 			MsgHdr: dns.MsgHdr{
 				Id:       message.Id,
@@ -54,8 +61,9 @@ func (c *Client) Exchange(ctx context.Context, transport Transport, message *dns
 	question := message.Question[0]
 	disableCache := c.disableCache || DisableCacheFromContext(ctx)
 	if !disableCache {
-		response, cached := c.loadResponse(question)
-		if cached {
+		response, ttl := c.loadResponse(question)
+		if response != nil {
+			logCachedResponse(c.logger, ctx, response, ttl)
 			response.Id = message.Id
 			return response, nil
 		}
@@ -82,11 +90,25 @@ func (c *Client) Exchange(ctx context.Context, transport Transport, message *dns
 	if err != nil {
 		return nil, err
 	}
+	var timeToLive int
+	for _, recordList := range [][]dns.RR{message.Answer, message.Ns, message.Extra} {
+		for _, record := range recordList {
+			if timeToLive == 0 || int(record.Header().Ttl) < timeToLive {
+				timeToLive = int(record.Header().Ttl)
+			}
+		}
+	}
+	if timeToLive == 0 {
+		timeToLive = DefaultTTL
+	}
+
+	logExchangedResponse(c.logger, ctx, response, timeToLive)
 
 	response.Id = messageId
 	if !disableCache {
-		c.storeCache(question, response)
+		c.storeCache(question, response, timeToLive)
 	}
+
 	return response, err
 }
 
@@ -206,7 +228,7 @@ func (c *Client) Lookup(ctx context.Context, transport Transport, domain string,
 					})
 				}
 			}
-			c.storeCache(question4, message4)
+			c.storeCache(question4, message4, DefaultTTL)
 		}
 		if strategy != DomainStrategyUseIPv4 {
 			question6 := dns.Question{
@@ -234,7 +256,7 @@ func (c *Client) Lookup(ctx context.Context, transport Transport, domain string,
 					})
 				}
 			}
-			c.storeCache(question6, message6)
+			c.storeCache(question6, message6, DefaultTTL)
 		}
 	}
 	return response, err
@@ -248,16 +270,10 @@ func sortAddresses(response4 []netip.Addr, response6 []netip.Addr, strategy Doma
 	}
 }
 
-func (c *Client) storeCache(question dns.Question, message *dns.Msg) {
+func (c *Client) storeCache(question dns.Question, message *dns.Msg, timeToLive int) {
 	if c.disableExpire {
 		c.cache.Store(question, message)
 		return
-	}
-	timeToLive := DefaultTTL
-	for _, answer := range message.Answer {
-		if int(answer.Header().Ttl) < timeToLive {
-			timeToLive = int(answer.Header().Ttl)
-		}
 	}
 	expireAt := time.Now().Add(time.Second * time.Duration(timeToLive))
 	c.cache.StoreWithExpire(question, message, expireAt)
@@ -345,38 +361,42 @@ func (c *Client) lookupToExchange(ctx context.Context, transport Transport, name
 }
 
 func (c *Client) questionCache(question dns.Question) ([]netip.Addr, error) {
-	response, cached := c.loadResponse(question)
-	if !cached {
+	response, _ := c.loadResponse(question)
+	if response == nil {
 		return nil, ErrNotCached
 	}
 	return messageToAddresses(response)
 }
 
-func (c *Client) loadResponse(question dns.Question) (*dns.Msg, bool) {
+func (c *Client) loadResponse(question dns.Question) (*dns.Msg, int) {
 	if c.disableExpire {
 		response, loaded := c.cache.Load(question)
 		if !loaded {
-			return nil, false
+			return nil, 0
 		}
-		return response.Copy(), true
+		return response.Copy(), 0
 	} else {
 		cachedAnswer, expireAt, loaded := c.cache.LoadWithExpire(question)
 		if !loaded {
-			return nil, false
+			return nil, 0
 		}
-		if expireAt.Before(time.Now()) {
+		timeNow := time.Now()
+		if timeNow.After(expireAt) {
 			c.cache.Delete(question)
-			return nil, false
+			return nil, 0
+		}
+		ttl := int(expireAt.Sub(timeNow).Seconds())
+		if ttl < 0 {
+			ttl = 0
 		}
 		response := cachedAnswer.Copy()
 		for _, rr := range response.Answer {
-			ttl := expireAt.Sub(time.Now()).Seconds()
-			if ttl < 0 {
-				ttl = 0
-			}
 			rr.Header().Ttl = uint32(ttl)
 		}
-		return response, true
+		for _, rr := range response.Ns {
+			rr.Header().Ttl = uint32(ttl)
+		}
+		return response, ttl
 	}
 }
 
