@@ -83,6 +83,9 @@ func (c *Client) Exchange(ctx context.Context, transport Transport, message *dns
 			},
 			Question: []dns.Question{question},
 		}
+		if c.logger != nil {
+			c.logger.DebugContext(ctx, "strategy rejected")
+		}
 		return &responseMessage, nil
 	}
 	messageId := message.Id
