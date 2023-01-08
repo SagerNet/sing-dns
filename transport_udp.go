@@ -25,10 +25,7 @@ func init() {
 
 func CreateUDPTransport(ctx context.Context, logger logger.ContextLogger, dialer N.Dialer, link string) (Transport, error) {
 	serverURL, err := url.Parse(link)
-	if err != nil {
-		return nil, err
-	}
-	if serverURL.Scheme == "" {
+	if err == nil && serverURL.Scheme == "" {
 		return NewUDPTransport(ctx, dialer, M.ParseSocksaddr(link))
 	}
 	return NewUDPTransport(ctx, dialer, M.ParseSocksaddr(serverURL.Host))
