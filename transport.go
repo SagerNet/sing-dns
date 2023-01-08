@@ -36,10 +36,12 @@ func RegisterTransport(schemes []string, constructor TransportConstructor) {
 func CreateTransport(ctx context.Context, logger logger.ContextLogger, dialer N.Dialer, address string) (Transport, error) {
 	constructor := transports[address]
 	if constructor == nil {
-		serverURL, err := url.Parse(address)
-		if err == nil {
-			constructor = transports[serverURL.Scheme]
+		serverURL, _ := url.Parse(address)
+		var scheme string
+		if serverURL != nil {
+			scheme = serverURL.Scheme
 		}
+		constructor = transports[scheme]
 	}
 	if constructor == nil {
 		return nil, E.New("unknown DNS server format: " + address)
