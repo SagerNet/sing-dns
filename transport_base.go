@@ -87,10 +87,15 @@ func (t *myTransportAdapter) recvLoop(conn *dnsConnection) {
 				return err
 			}
 			conn.access.RLock()
-			if callback, loaded := conn.callbacks[message.Id]; loaded {
-				callback <- message
-			}
+			callback, loaded := conn.callbacks[message.Id]
 			conn.access.RUnlock()
+			if !loaded {
+				continue
+			}
+			select {
+			case callback <- message:
+			default:
+			}
 		}
 	})
 	group.Cleanup(func() {
