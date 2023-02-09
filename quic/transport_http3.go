@@ -92,6 +92,9 @@ func (t *HTTP3Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS
 	}
 	defer response.Body.Close()
 	rawMessage, err = io.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
 	var responseMessage mDNS.Msg
 	err = responseMessage.Unpack(rawMessage)
 	if err != nil {
