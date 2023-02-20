@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/miekg/dns v1.1.50
 	github.com/sagernet/quic-go v0.0.0-20230202071646-a8c8afb18b32
-	github.com/sagernet/sing v0.1.7-0.20230209132010-5f1ef3441c13
+	github.com/sagernet/sing v0.1.7
 )
 
 require (
