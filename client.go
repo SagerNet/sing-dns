@@ -105,6 +105,14 @@ func (c *Client) Exchange(ctx context.Context, transport Transport, message *dns
 		timeToLive = DefaultTTL
 	}
 
+	if rewriteTTL, loaded := RewriteTTLFromContext(ctx); loaded {
+		for _, recordList := range [][]dns.RR{message.Answer, message.Ns, message.Extra} {
+			for _, record := range recordList {
+				record.Header().Ttl = uint32(rewriteTTL)
+			}
+		}
+	}
+
 	logExchangedResponse(c.logger, ctx, response, timeToLive)
 
 	response.Id = messageId
@@ -308,6 +316,12 @@ func (c *Client) exchangeToLookup(ctx context.Context, transport Transport, mess
 		},
 		Question: message.Question,
 	}
+	var timeToLive uint32
+	if rewriteTTL, loaded := RewriteTTLFromContext(ctx); loaded {
+		timeToLive = uint32(rewriteTTL)
+	} else {
+		timeToLive = DefaultTTL
+	}
 	for _, address := range result {
 		if address.Is4In6() {
 			address = netip.AddrFrom4(address.As4())
@@ -318,7 +332,7 @@ func (c *Client) exchangeToLookup(ctx context.Context, transport Transport, mess
 					Name:   question.Name,
 					Rrtype: dns.TypeA,
 					Class:  dns.ClassINET,
-					Ttl:    DefaultTTL,
+					Ttl:    timeToLive,
 				},
 				A: address.AsSlice(),
 			})
@@ -328,7 +342,7 @@ func (c *Client) exchangeToLookup(ctx context.Context, transport Transport, mess
 					Name:   question.Name,
 					Rrtype: dns.TypeAAAA,
 					Class:  dns.ClassINET,
-					Ttl:    DefaultTTL,
+					Ttl:    timeToLive,
 				},
 				AAAA: address.AsSlice(),
 			})
