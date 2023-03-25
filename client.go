@@ -68,12 +68,6 @@ func (c *Client) Exchange(ctx context.Context, transport Transport, message *dns
 			return response, nil
 		}
 	}
-	if !transport.Raw() {
-		if question.Qtype == dns.TypeA || question.Qtype == dns.TypeAAAA {
-			return c.exchangeToLookup(ctx, transport, message, question)
-		}
-		return nil, ErrNoRawSupport
-	}
 	if question.Qtype == dns.TypeA && strategy == DomainStrategyUseIPv6 || question.Qtype == dns.TypeAAAA && strategy == DomainStrategyUseIPv4 {
 		responseMessage := dns.Msg{
 			MsgHdr: dns.MsgHdr{
@@ -87,6 +81,12 @@ func (c *Client) Exchange(ctx context.Context, transport Transport, message *dns
 			c.logger.DebugContext(ctx, "strategy rejected")
 		}
 		return &responseMessage, nil
+	}
+	if !transport.Raw() {
+		if question.Qtype == dns.TypeA || question.Qtype == dns.TypeAAAA {
+			return c.exchangeToLookup(ctx, transport, message, question)
+		}
+		return nil, ErrNoRawSupport
 	}
 	messageId := message.Id
 	response, err := transport.Exchange(ctx, message)
