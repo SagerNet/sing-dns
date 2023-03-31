@@ -99,6 +99,7 @@ func (t *myTransportAdapter) recvLoop(conn *dnsConnection) {
 		}
 	})
 	group.Cleanup(func() {
+		conn.cancel()
 		conn.Close()
 	})
 	group.Run(conn.ctx)
