@@ -44,6 +44,21 @@ func NewClient(disableCache bool, disableExpire bool, logger logger.ContextLogge
 }
 
 func (c *Client) Exchange(ctx context.Context, transport Transport, message *dns.Msg, strategy DomainStrategy) (*dns.Msg, error) {
+	response, err := c.exchange(ctx, transport, message, strategy)
+	if err != nil {
+		return nil, err
+	}
+	if rewriteTTL, loaded := RewriteTTLFromContext(ctx); loaded {
+		for _, recordList := range [][]dns.RR{response.Answer, response.Ns, response.Extra} {
+			for _, record := range recordList {
+				record.Header().Ttl = rewriteTTL
+			}
+		}
+	}
+	return response, nil
+}
+
+func (c *Client) exchange(ctx context.Context, transport Transport, message *dns.Msg, strategy DomainStrategy) (*dns.Msg, error) {
 	if len(message.Question) != 1 {
 		if c.logger != nil {
 			c.logger.WarnContext(ctx, "bad question size: ", len(message.Question))
@@ -104,15 +119,6 @@ func (c *Client) Exchange(ctx context.Context, transport Transport, message *dns
 	if timeToLive == 0 {
 		timeToLive = DefaultTTL
 	}
-
-	if rewriteTTL, loaded := RewriteTTLFromContext(ctx); loaded {
-		for _, recordList := range [][]dns.RR{response.Answer, response.Ns, response.Extra} {
-			for _, record := range recordList {
-				record.Header().Ttl = rewriteTTL
-			}
-		}
-	}
-
 	logExchangedResponse(c.logger, ctx, response, timeToLive)
 
 	response.Id = messageId
