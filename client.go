@@ -104,6 +104,11 @@ func (c *Client) exchange(ctx context.Context, transport Transport, message *dns
 		return nil, ErrNoRawSupport
 	}
 	messageId := message.Id
+	contextTransport, loaded := transportNameFromContext(ctx)
+	if loaded && transport.Name() == contextTransport {
+		return nil, E.New("DNS query loopback in transport[", contextTransport, "]")
+	}
+	ctx = contextWithTransportName(ctx, transport.Name())
 	response, err := transport.Exchange(ctx, message)
 	if err != nil {
 		return nil, err
