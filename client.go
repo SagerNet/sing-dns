@@ -76,7 +76,7 @@ func (c *Client) exchange(ctx context.Context, transport Transport, message *dns
 	question := message.Question[0]
 	disableCache := c.disableCache || DisableCacheFromContext(ctx)
 	if !disableCache {
-		response, ttl := c.loadResponse(question)
+		response, ttl := c.loadResponse(question, transport)
 		if response != nil {
 			logCachedResponse(c.logger, ctx, response, ttl)
 			response.Id = message.Id
@@ -128,7 +128,7 @@ func (c *Client) exchange(ctx context.Context, transport Transport, message *dns
 
 	response.Id = messageId
 	if !disableCache {
-		c.storeCache(question, response, timeToLive)
+		c.storeCache(question, transport, response, timeToLive)
 	}
 
 	return response, err
@@ -177,7 +177,7 @@ func (c *Client) Lookup(ctx context.Context, transport Transport, domain string,
 				Name:   dnsName,
 				Qtype:  dns.TypeA,
 				Qclass: dns.ClassINET,
-			})
+			}, transport)
 			if err != ErrNotCached {
 				return response, err
 			}
@@ -186,7 +186,7 @@ func (c *Client) Lookup(ctx context.Context, transport Transport, domain string,
 				Name:   dnsName,
 				Qtype:  dns.TypeAAAA,
 				Qclass: dns.ClassINET,
-			})
+			}, transport)
 			if err != ErrNotCached {
 				return response, err
 			}
@@ -195,12 +195,12 @@ func (c *Client) Lookup(ctx context.Context, transport Transport, domain string,
 				Name:   dnsName,
 				Qtype:  dns.TypeA,
 				Qclass: dns.ClassINET,
-			})
+			}, transport)
 			response6, _ := c.questionCache(dns.Question{
 				Name:   dnsName,
 				Qtype:  dns.TypeAAAA,
 				Qclass: dns.ClassINET,
-			})
+			}, transport)
 			if len(response4) > 0 || len(response6) > 0 {
 				return sortAddresses(response4, response6, strategy), nil
 			}
@@ -250,7 +250,7 @@ func (c *Client) Lookup(ctx context.Context, transport Transport, domain string,
 					})
 				}
 			}
-			c.storeCache(question4, message4, DefaultTTL)
+			c.storeCache(question4, transport, message4, DefaultTTL)
 		}
 		if strategy != DomainStrategyUseIPv4 {
 			question6 := dns.Question{
@@ -278,7 +278,7 @@ func (c *Client) Lookup(ctx context.Context, transport Transport, domain string,
 					})
 				}
 			}
-			c.storeCache(question6, message6, DefaultTTL)
+			c.storeCache(question6, transport, message6, DefaultTTL)
 		}
 	}
 	return response, err
@@ -292,7 +292,8 @@ func sortAddresses(response4 []netip.Addr, response6 []netip.Addr, strategy Doma
 	}
 }
 
-func (c *Client) storeCache(question dns.Question, message *dns.Msg, timeToLive int) {
+func (c *Client) storeCache(question dns.Question, transport Transport, message *dns.Msg, timeToLive int) {
+	question.Name += transport.Name()
 	if c.disableExpire {
 		c.cache.Store(question, message)
 		return
@@ -370,7 +371,7 @@ func (c *Client) lookupToExchange(ctx context.Context, transport Transport, name
 	}
 	disableCache := c.disableCache || DisableCacheFromContext(ctx)
 	if !disableCache {
-		cachedAddresses, err := c.questionCache(question)
+		cachedAddresses, err := c.questionCache(question, transport)
 		if err != ErrNotCached {
 			return cachedAddresses, err
 		}
@@ -388,15 +389,16 @@ func (c *Client) lookupToExchange(ctx context.Context, transport Transport, name
 	return messageToAddresses(response)
 }
 
-func (c *Client) questionCache(question dns.Question) ([]netip.Addr, error) {
-	response, _ := c.loadResponse(question)
+func (c *Client) questionCache(question dns.Question, transport Transport) ([]netip.Addr, error) {
+	response, _ := c.loadResponse(question, transport)
 	if response == nil {
 		return nil, ErrNotCached
 	}
 	return messageToAddresses(response)
 }
 
-func (c *Client) loadResponse(question dns.Question) (*dns.Msg, int) {
+func (c *Client) loadResponse(question dns.Question, transport Transport) (*dns.Msg, int) {
+	question.Name += transport.Name()
 	if c.disableExpire {
 		response, loaded := c.cache.Load(question)
 		if !loaded {
