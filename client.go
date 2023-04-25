@@ -430,11 +430,7 @@ func (c *Client) loadResponse(question dns.Question) (*dns.Msg, int) {
 			duration := uint32(originTTL - nowTTL)
 			for _, recordList := range [][]dns.RR{response.Answer, response.Ns, response.Extra} {
 				for _, record := range recordList {
-					newTTL := record.Header().Ttl - duration
-					if newTTL < 0 {
-						newTTL = 0
-					}
-					record.Header().Ttl = newTTL
+					record.Header().Ttl = record.Header().Ttl - duration
 				}
 			}
 		} else {
