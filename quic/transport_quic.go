@@ -98,9 +98,9 @@ func (t *Transport) openConnection() (quic.EarlyConnection, error) {
 		return nil, err
 	}
 	earlyConnection, err := quic.DialEarly(
+		t.ctx,
 		bufio.NewUnbindPacketConn(conn),
 		t.serverAddr.UDPAddr(),
-		t.serverAddr.AddrString(),
 		&tls.Config{NextProtos: []string{"doq"}},
 		nil,
 	)
