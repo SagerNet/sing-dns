@@ -62,21 +62,6 @@ func NewClient(options ClientOptions) *Client {
 }
 
 func (c *Client) Exchange(ctx context.Context, transport Transport, message *dns.Msg, strategy DomainStrategy) (*dns.Msg, error) {
-	response, err := c.exchange(ctx, transport, message, strategy)
-	if err != nil {
-		return nil, err
-	}
-	if rewriteTTL, loaded := RewriteTTLFromContext(ctx); loaded {
-		for _, recordList := range [][]dns.RR{response.Answer, response.Ns, response.Extra} {
-			for _, record := range recordList {
-				record.Header().Ttl = rewriteTTL
-			}
-		}
-	}
-	return response, nil
-}
-
-func (c *Client) exchange(ctx context.Context, transport Transport, message *dns.Msg, strategy DomainStrategy) (*dns.Msg, error) {
 	if len(message.Question) != 1 {
 		if c.logger != nil {
 			c.logger.WarnContext(ctx, "bad question size: ", len(message.Question))
@@ -139,8 +124,16 @@ func (c *Client) exchange(ctx context.Context, transport Transport, message *dns
 			}
 		}
 	}
+	if rewriteTTL, loaded := RewriteTTLFromContext(ctx); loaded {
+		timeToLive = int(rewriteTTL)
+	}
 	if timeToLive == 0 {
 		timeToLive = DefaultTTL
+	}
+	for _, recordList := range [][]dns.RR{response.Answer, response.Ns, response.Extra} {
+		for _, record := range recordList {
+			record.Header().Ttl = uint32(timeToLive)
+		}
 	}
 	logExchangedResponse(c.logger, ctx, response, timeToLive)
 
@@ -156,13 +149,6 @@ func (c *Client) ExchangeCache(ctx context.Context, message *dns.Msg) (*dns.Msg,
 	response, cached := c.exchangeCache(ctx, message)
 	if !cached {
 		return nil, false
-	}
-	if rewriteTTL, loaded := RewriteTTLFromContext(ctx); loaded {
-		for _, recordList := range [][]dns.RR{response.Answer, response.Ns, response.Extra} {
-			for _, record := range recordList {
-				record.Header().Ttl = rewriteTTL
-			}
-		}
 	}
 	return response, true
 }
@@ -275,6 +261,12 @@ func (c *Client) Lookup(ctx context.Context, transport Transport, domain string,
 		Rcode:    rCode,
 	}
 	if !disableCache {
+		var timeToLive uint32
+		if rewriteTTL, loaded := RewriteTTLFromContext(ctx); loaded {
+			timeToLive = rewriteTTL
+		} else {
+			timeToLive = DefaultTTL
+		}
 		if strategy != DomainStrategyUseIPv6 {
 			question4 := dns.Question{
 				Name:   dnsName,
@@ -295,13 +287,13 @@ func (c *Client) Lookup(ctx context.Context, transport Transport, domain string,
 							Name:   question4.Name,
 							Rrtype: dns.TypeA,
 							Class:  dns.ClassINET,
-							Ttl:    DefaultTTL,
+							Ttl:    timeToLive,
 						},
 						A: address.AsSlice(),
 					})
 				}
 			}
-			c.storeCache(transport, question4, message4, DefaultTTL)
+			c.storeCache(transport, question4, message4, int(timeToLive))
 		}
 		if strategy != DomainStrategyUseIPv4 {
 			question6 := dns.Question{
@@ -329,7 +321,7 @@ func (c *Client) Lookup(ctx context.Context, transport Transport, domain string,
 					})
 				}
 			}
-			c.storeCache(transport, question6, message6, DefaultTTL)
+			c.storeCache(transport, question6, message6, int(timeToLive))
 		}
 	}
 	return response, err
