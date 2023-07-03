@@ -54,9 +54,7 @@ func (t *UDPTransport) DialContext(ctx context.Context, queryCtx context.Context
 }
 
 func (t *UDPTransport) ReadMessage(conn net.Conn) (*dns.Msg, error) {
-	_buffer := buf.StackNewSize(FixedPacketSize)
-	defer common.KeepAlive(_buffer)
-	buffer := common.Dup(_buffer)
+	buffer := buf.NewSize(FixedPacketSize)
 	defer buffer.Release()
 	_, err := buffer.ReadOnceFrom(conn)
 	if err != nil {

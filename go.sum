@@ -29,8 +29,8 @@ github.com/quic-go/qtls-go1-20 v0.2.2 h1:WLOPx6OY/hxtTxKV1Zrq20FtXtDEkeY00CGQm8G
 github.com/quic-go/qtls-go1-20 v0.2.2/go.mod h1:JKtK6mjbAVcUTN/9jZpvLbGxvdWIKS8uT7EiStoU1SM=
 github.com/sagernet/quic-go v0.0.0-20230615020047-10f05c797c02 h1:9S+L1n/4hbe1pCLNTZnnddSNseQda8tuSm/+uRy6p8s=
 github.com/sagernet/quic-go v0.0.0-20230615020047-10f05c797c02/go.mod h1:rth94YcHJfkC4mG03JTXmv7mJsDc8MOIIqQrCtoaV4U=
-github.com/sagernet/sing v0.2.7 h1:cOy0FfPS8q7m0aJ51wS7LRQAGc9wF+fWhHtBDj99wy8=
-github.com/sagernet/sing v0.2.7/go.mod h1:Ta8nHnDLAwqySzKhGoKk4ZIB+vJ3GTKj7UPrWYvM+4w=
+github.com/sagernet/sing v0.2.8-0.20230703002104-c68251b6d059 h1:nqTONy58Gq1mdoGx9GX+GKXdSTwOPTKF/DXK+Wn4B+A=
+github.com/sagernet/sing v0.2.8-0.20230703002104-c68251b6d059/go.mod h1:Ta8nHnDLAwqySzKhGoKk4ZIB+vJ3GTKj7UPrWYvM+4w=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/testify v1.5.1 h1:nOGnQDM7FYENwehXlg/kFVnos3rEvtKTjRvOWSzb6H4=
 github.com/stretchr/testify v1.5.1/go.mod h1:5W2xD1RspED5o8YsWQXVCued0rvSQ+mT+I5cxcmMvtA=

@@ -141,9 +141,7 @@ func (t *Transport) exchange(ctx context.Context, message *mDNS.Msg, conn quic.C
 	if err != nil {
 		return nil, err
 	}
-	_buffer := buf.StackNewSize(2 + len(rawMessage))
-	defer common.KeepAlive(_buffer)
-	buffer := common.Dup(_buffer)
+	buffer := buf.NewSize(2 + len(rawMessage))
 	defer buffer.Release()
 	common.Must(binary.Write(buffer, binary.BigEndian, uint16(len(rawMessage))))
 	common.Must1(buffer.Write(rawMessage))
@@ -166,8 +164,7 @@ func (t *Transport) exchange(ctx context.Context, message *mDNS.Msg, conn quic.C
 	buffer.FullReset()
 	if buffer.FreeLen() < responseLen {
 		buffer.Release()
-		_buffer = buf.StackNewSize(responseLen)
-		buffer = common.Dup(_buffer)
+		buffer = buf.NewSize(responseLen)
 	}
 	_, err = buffer.ReadFullFrom(stream, responseLen)
 	if err != nil {
