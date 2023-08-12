@@ -59,6 +59,9 @@ func (t *RCodeTransport) Start() error {
 	return nil
 }
 
+func (t *RCodeTransport) Reset() {
+}
+
 func (t *RCodeTransport) Close() error {
 	return nil
 }

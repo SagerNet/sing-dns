@@ -70,6 +70,10 @@ func (t *HTTP3Transport) Start() error {
 	return nil
 }
 
+func (t *HTTP3Transport) Reset() {
+	t.transport.CloseIdleConnections()
+}
+
 func (t *HTTP3Transport) Close() error {
 	return t.transport.Close()
 }

@@ -17,6 +17,7 @@ type TransportConstructor = func(name string, ctx context.Context, logger logger
 type Transport interface {
 	Name() string
 	Start() error
+	Reset()
 	Close() error
 	Raw() bool
 	Exchange(ctx context.Context, message *dns.Msg) (*dns.Msg, error)

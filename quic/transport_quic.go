@@ -70,11 +70,15 @@ func (t *Transport) Start() error {
 	return nil
 }
 
-func (t *Transport) Close() error {
+func (t *Transport) Reset() {
 	connection := t.connection
 	if connection != nil {
 		connection.CloseWithError(0, "")
 	}
+}
+
+func (t *Transport) Close() error {
+	t.Reset()
 	return nil
 }
 

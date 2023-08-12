@@ -165,12 +165,16 @@ func (t *myTransportAdapter) cleanup(conn *dnsConnection, messageId uint16, call
 	close(callback)
 }
 
-func (t *myTransportAdapter) Close() error {
+func (t *myTransportAdapter) Reset() {
 	conn := t.conn
 	if conn != nil {
 		conn.cancel()
 		conn.Close()
 	}
+}
+
+func (t *myTransportAdapter) Close() error {
+	t.Reset()
 	return nil
 }
 

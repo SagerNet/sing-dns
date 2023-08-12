@@ -49,6 +49,9 @@ func (t *LocalTransport) Start() error {
 	return nil
 }
 
+func (t *LocalTransport) Reset() {
+}
+
 func (t *LocalTransport) Close() error {
 	return nil
 }

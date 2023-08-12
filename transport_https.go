@@ -59,8 +59,12 @@ func (t *HTTPSTransport) Start() error {
 	return nil
 }
 
-func (t *HTTPSTransport) Close() error {
+func (t *HTTPSTransport) Reset() {
 	t.transport.CloseIdleConnections()
+}
+
+func (t *HTTPSTransport) Close() error {
+	t.Reset()
 	return nil
 }
 
