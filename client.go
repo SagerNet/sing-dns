@@ -153,24 +153,6 @@ func (c *Client) ExchangeCache(ctx context.Context, message *dns.Msg) (*dns.Msg,
 	return response, true
 }
 
-func (c *Client) exchangeCache(ctx context.Context, message *dns.Msg) (*dns.Msg, bool) {
-	if c.independentCache || len(message.Question) != 1 {
-		return nil, false
-	}
-	question := message.Question[0]
-	disableCache := c.disableCache || DisableCacheFromContext(ctx)
-	if disableCache {
-		return nil, false
-	}
-	response, ttl := c.loadResponse(question, nil)
-	if response == nil {
-		return nil, false
-	}
-	logCachedResponse(c.logger, ctx, response, ttl)
-	response.Id = message.Id
-	return response, true
-}
-
 func (c *Client) Lookup(ctx context.Context, transport Transport, domain string, strategy DomainStrategy) ([]netip.Addr, error) {
 	if dns.IsFqdn(domain) {
 		domain = domain[:len(domain)-1]
@@ -325,6 +307,33 @@ func (c *Client) Lookup(ctx context.Context, transport Transport, domain string,
 		}
 	}
 	return response, err
+}
+
+func (c *Client) ClearCache() {
+	if c.cache != nil {
+		c.cache.Clear()
+	}
+	if c.transportCache != nil {
+		c.transportCache.Clear()
+	}
+}
+
+func (c *Client) exchangeCache(ctx context.Context, message *dns.Msg) (*dns.Msg, bool) {
+	if c.independentCache || len(message.Question) != 1 {
+		return nil, false
+	}
+	question := message.Question[0]
+	disableCache := c.disableCache || DisableCacheFromContext(ctx)
+	if disableCache {
+		return nil, false
+	}
+	response, ttl := c.loadResponse(question, nil)
+	if response == nil {
+		return nil, false
+	}
+	logCachedResponse(c.logger, ctx, response, ttl)
+	response.Id = message.Id
+	return response, true
 }
 
 func sortAddresses(response4 []netip.Addr, response6 []netip.Addr, strategy DomainStrategy) []netip.Addr {
