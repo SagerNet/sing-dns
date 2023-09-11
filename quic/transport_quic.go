@@ -105,7 +105,7 @@ func (t *Transport) openConnection() (quic.EarlyConnection, error) {
 		t.ctx,
 		bufio.NewUnbindPacketConn(conn),
 		t.serverAddr.UDPAddr(),
-		&tls.Config{NextProtos: []string{"doq"}},
+		&tls.Config{ServerName: t.serverAddr.AddrString(), NextProtos: []string{"doq"}},
 		nil,
 	)
 	if err != nil {
