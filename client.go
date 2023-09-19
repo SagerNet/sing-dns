@@ -539,8 +539,6 @@ func (c *Client) loadResponse(question dns.Question, transport Transport) (*dns.
 func messageToAddresses(response *dns.Msg) ([]netip.Addr, error) {
 	if response.Rcode != dns.RcodeSuccess {
 		return nil, RCodeError(response.Rcode)
-	} else if len(response.Answer) == 0 {
-		return nil, RCodeSuccess
 	}
 	addresses := make([]netip.Addr, 0, len(response.Answer))
 	for _, rawAnswer := range response.Answer {
