@@ -228,15 +228,7 @@ func (c *Client) Lookup(ctx context.Context, transport Transport, domain string,
 	var rCode int
 	response, err := transport.Lookup(ctx, domain, strategy)
 	if err != nil {
-		err = wrapError(err)
-		if rCodeError, isRCodeError := err.(RCodeError); !isRCodeError {
-			return nil, err
-		} else {
-			rCode = int(rCodeError)
-		}
-		if disableCache {
-			return nil, err
-		}
+		return nil, wrapError(err)
 	}
 	header := dns.MsgHdr{
 		Response: true,
@@ -306,7 +298,7 @@ func (c *Client) Lookup(ctx context.Context, transport Transport, domain string,
 			c.storeCache(transport, question6, message6, int(timeToLive))
 		}
 	}
-	return response, err
+	return response, nil
 }
 
 func (c *Client) ClearCache() {
@@ -375,20 +367,14 @@ func (c *Client) exchangeToLookup(ctx context.Context, transport Transport, mess
 	} else {
 		strategy = DomainStrategyUseIPv6
 	}
-	var rCode int
 	result, err := c.Lookup(ctx, transport, domain, strategy)
 	if err != nil {
-		err = wrapError(err)
-		if rCodeError, isRCodeError := err.(RCodeError); !isRCodeError {
-			return nil, err
-		} else {
-			rCode = int(rCodeError)
-		}
+		return nil, wrapError(err)
 	}
 	response := dns.Msg{
 		MsgHdr: dns.MsgHdr{
 			Id:       message.Id,
-			Rcode:    rCode,
+			Rcode:    dns.RcodeSuccess,
 			Response: true,
 		},
 		Question: message.Question,
