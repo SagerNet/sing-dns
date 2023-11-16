@@ -127,9 +127,6 @@ func (c *Client) Exchange(ctx context.Context, transport Transport, message *dns
 	if rewriteTTL, loaded := RewriteTTLFromContext(ctx); loaded {
 		timeToLive = int(rewriteTTL)
 	}
-	if timeToLive == 0 {
-		timeToLive = DefaultTTL
-	}
 	for _, recordList := range [][]dns.RR{response.Answer, response.Ns, response.Extra} {
 		for _, record := range recordList {
 			record.Header().Ttl = uint32(timeToLive)
@@ -337,6 +334,9 @@ func sortAddresses(response4 []netip.Addr, response6 []netip.Addr, strategy Doma
 }
 
 func (c *Client) storeCache(transport Transport, question dns.Question, message *dns.Msg, timeToLive int) {
+	if timeToLive == 0 {
+		return
+	}
 	if c.disableExpire {
 		if !c.independentCache {
 			c.cache.Store(question, message)
