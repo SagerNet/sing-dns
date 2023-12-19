@@ -49,7 +49,7 @@ func NewTLSTransport(name string, ctx context.Context, dialer N.Dialer, serverAd
 	return transport, nil
 }
 
-func (t *TLSTransport) DialContext(ctx context.Context, queryCtx context.Context) (net.Conn, error) {
+func (t *TLSTransport) DialContext(ctx context.Context) (net.Conn, error) {
 	conn, err := t.dialer.DialContext(ctx, N.NetworkTCP, t.serverAddr)
 	if err != nil {
 		return nil, err
@@ -57,7 +57,7 @@ func (t *TLSTransport) DialContext(ctx context.Context, queryCtx context.Context
 	tlsConn := tls.Client(conn, &tls.Config{
 		ServerName: t.serverAddr.AddrString(),
 	})
-	err = tlsConn.HandshakeContext(queryCtx)
+	err = tlsConn.HandshakeContext(ctx)
 	if err != nil {
 		conn.Close()
 		return nil, err

@@ -48,7 +48,7 @@ func NewTCPTransport(name string, ctx context.Context, dialer N.Dialer, serverAd
 	return transport, nil
 }
 
-func (t *TCPTransport) DialContext(ctx context.Context, queryCtx context.Context) (net.Conn, error) {
+func (t *TCPTransport) DialContext(ctx context.Context) (net.Conn, error) {
 	return t.dialer.DialContext(ctx, N.NetworkTCP, t.serverAddr)
 }
 

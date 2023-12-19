@@ -49,7 +49,7 @@ func NewUDPTransport(name string, ctx context.Context, dialer N.Dialer, serverAd
 	return transport, nil
 }
 
-func (t *UDPTransport) DialContext(ctx context.Context, queryCtx context.Context) (net.Conn, error) {
+func (t *UDPTransport) DialContext(ctx context.Context) (net.Conn, error) {
 	return t.dialer.DialContext(ctx, "udp", t.serverAddr)
 }
 

@@ -17,7 +17,7 @@ import (
 )
 
 type myTransportHandler interface {
-	DialContext(ctx context.Context, queryCtx context.Context) (net.Conn, error)
+	DialContext(ctx context.Context) (net.Conn, error)
 	ReadMessage(conn net.Conn) (*dns.Msg, error)
 	WriteMessage(conn net.Conn, message *dns.Msg) error
 }
@@ -67,12 +67,11 @@ func (t *myTransportAdapter) open(ctx context.Context) (*dnsConnection, error) {
 			return connection, nil
 		}
 	}
-	connCtx, cancel := context.WithCancel(t.ctx)
-	conn, err := t.handler.DialContext(connCtx, ctx)
+	conn, err := t.handler.DialContext(ctx)
 	if err != nil {
-		cancel()
 		return nil, err
 	}
+	connCtx, cancel := context.WithCancel(t.ctx)
 	connection = &dnsConnection{
 		Conn:      conn,
 		ctx:       connCtx,
