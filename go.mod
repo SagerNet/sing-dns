@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/miekg/dns v1.1.57
 	github.com/sagernet/quic-go v0.0.0-20230919101909-0cc6c5dcecee
-	github.com/sagernet/sing v0.2.17
+	github.com/sagernet/sing v0.2.20
 )
 
 require (
@@ -18,7 +18,7 @@ require (
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9 // indirect
 	golang.org/x/mod v0.12.0 // indirect
 	golang.org/x/net v0.17.0 // indirect
-	golang.org/x/sys v0.14.0 // indirect
+	golang.org/x/sys v0.15.0 // indirect
 	golang.org/x/text v0.13.0 // indirect
 	golang.org/x/tools v0.13.0 // indirect
 )
