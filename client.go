@@ -463,7 +463,7 @@ func (c *Client) lookupToExchange(ctx context.Context, transport Transport, name
 	if err != nil {
 		return nil, err
 	}
-	return messageToAddresses(response)
+	return MessageToAddresses(response)
 }
 
 func (c *Client) questionCache(question dns.Question, transport Transport) ([]netip.Addr, error) {
@@ -471,7 +471,7 @@ func (c *Client) questionCache(question dns.Question, transport Transport) ([]ne
 	if response == nil {
 		return nil, ErrNotCached
 	}
-	return messageToAddresses(response)
+	return MessageToAddresses(response)
 }
 
 func (c *Client) loadResponse(question dns.Question, transport Transport) (*dns.Msg, int) {
@@ -548,7 +548,7 @@ func (c *Client) loadResponse(question dns.Question, transport Transport) (*dns.
 	}
 }
 
-func messageToAddresses(response *dns.Msg) ([]netip.Addr, error) {
+func MessageToAddresses(response *dns.Msg) ([]netip.Addr, error) {
 	if response.Rcode != dns.RcodeSuccess {
 		return nil, RCodeError(response.Rcode)
 	}
