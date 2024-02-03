@@ -19,8 +19,9 @@ import (
 const DefaultTTL = 600
 
 var (
-	ErrNoRawSupport = E.New("no raw query support by current transport")
-	ErrNotCached    = E.New("not cached")
+	ErrNoRawSupport     = E.New("no raw query support by current transport")
+	ErrNotCached        = E.New("not cached")
+	ErrResponseRejected = E.New("response rejected")
 )
 
 type Client struct {
@@ -62,6 +63,10 @@ func NewClient(options ClientOptions) *Client {
 }
 
 func (c *Client) Exchange(ctx context.Context, transport Transport, message *dns.Msg, strategy DomainStrategy) (*dns.Msg, error) {
+	return c.ExchangeWithResponseCheck(ctx, transport, message, strategy, nil)
+}
+
+func (c *Client) ExchangeWithResponseCheck(ctx context.Context, transport Transport, message *dns.Msg, strategy DomainStrategy, responseChecker func(response *dns.Msg) bool) (*dns.Msg, error) {
 	if len(message.Question) != 1 {
 		if c.logger != nil {
 			c.logger.WarnContext(ctx, "bad question size: ", len(message.Question))
@@ -116,6 +121,9 @@ func (c *Client) Exchange(ctx context.Context, transport Transport, message *dns
 	if err != nil {
 		return nil, err
 	}
+	if responseChecker != nil && !responseChecker(response) {
+		return response, ErrResponseRejected
+	}
 	var timeToLive int
 	for _, recordList := range [][]dns.RR{response.Answer, response.Ns, response.Extra} {
 		for _, record := range recordList {
@@ -151,21 +159,25 @@ func (c *Client) ExchangeCache(ctx context.Context, message *dns.Msg) (*dns.Msg,
 }
 
 func (c *Client) Lookup(ctx context.Context, transport Transport, domain string, strategy DomainStrategy) ([]netip.Addr, error) {
+	return c.LookupWithResponseCheck(ctx, transport, domain, strategy, nil)
+}
+
+func (c *Client) LookupWithResponseCheck(ctx context.Context, transport Transport, domain string, strategy DomainStrategy, responseChecker func(responseAddrs []netip.Addr) bool) ([]netip.Addr, error) {
 	if dns.IsFqdn(domain) {
 		domain = domain[:len(domain)-1]
 	}
 	dnsName := dns.Fqdn(domain)
 	if transport.Raw() {
 		if strategy == DomainStrategyUseIPv4 {
-			return c.lookupToExchange(ctx, transport, dnsName, dns.TypeA, strategy)
+			return c.lookupToExchange(ctx, transport, dnsName, dns.TypeA, strategy, responseChecker)
 		} else if strategy == DomainStrategyUseIPv6 {
-			return c.lookupToExchange(ctx, transport, dnsName, dns.TypeAAAA, strategy)
+			return c.lookupToExchange(ctx, transport, dnsName, dns.TypeAAAA, strategy, responseChecker)
 		}
 		var response4 []netip.Addr
 		var response6 []netip.Addr
 		var group task.Group
 		group.Append("exchange4", func(ctx context.Context) error {
-			response, err := c.lookupToExchange(ctx, transport, dnsName, dns.TypeA, strategy)
+			response, err := c.lookupToExchange(ctx, transport, dnsName, dns.TypeA, strategy, responseChecker)
 			if err != nil {
 				return err
 			}
@@ -173,7 +185,7 @@ func (c *Client) Lookup(ctx context.Context, transport Transport, domain string,
 			return nil
 		})
 		group.Append("exchange6", func(ctx context.Context) error {
-			response, err := c.lookupToExchange(ctx, transport, dnsName, dns.TypeAAAA, strategy)
+			response, err := c.lookupToExchange(ctx, transport, dnsName, dns.TypeAAAA, strategy, responseChecker)
 			if err != nil {
 				return err
 			}
@@ -226,6 +238,9 @@ func (c *Client) Lookup(ctx context.Context, transport Transport, domain string,
 	response, err := transport.Lookup(ctx, domain, strategy)
 	if err != nil {
 		return nil, wrapError(err)
+	}
+	if responseChecker != nil && !responseChecker(response) {
+		return response, ErrResponseRejected
 	}
 	header := dns.MsgHdr{
 		Response: true,
@@ -414,7 +429,7 @@ func (c *Client) exchangeToLookup(ctx context.Context, transport Transport, mess
 	return &response, nil
 }
 
-func (c *Client) lookupToExchange(ctx context.Context, transport Transport, name string, qType uint16, strategy DomainStrategy) ([]netip.Addr, error) {
+func (c *Client) lookupToExchange(ctx context.Context, transport Transport, name string, qType uint16, strategy DomainStrategy, responseChecker func(responseAddrs []netip.Addr) bool) ([]netip.Addr, error) {
 	question := dns.Question{
 		Name:   name,
 		Qtype:  qType,
@@ -433,7 +448,18 @@ func (c *Client) lookupToExchange(ctx context.Context, transport Transport, name
 		},
 		Question: []dns.Question{question},
 	}
-	response, err := c.Exchange(ctx, transport, &message, strategy)
+	var (
+		response *dns.Msg
+		err      error
+	)
+	if responseChecker != nil {
+		response, err = c.ExchangeWithResponseCheck(ctx, transport, &message, strategy, func(response *dns.Msg) bool {
+			addresses, _ := MessageToAddresses(response)
+			return responseChecker(addresses)
+		})
+	} else {
+		response, err = c.Exchange(ctx, transport, &message, strategy)
+	}
 	if err != nil {
 		return nil, err
 	}
