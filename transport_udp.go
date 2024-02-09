@@ -8,9 +8,7 @@ import (
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
-	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
-	N "github.com/sagernet/sing/common/network"
 
 	"github.com/miekg/dns"
 )
@@ -20,22 +18,25 @@ const FixedPacketSize = 16384
 var _ Transport = (*UDPTransport)(nil)
 
 func init() {
-	RegisterTransport([]string{"udp", ""}, CreateUDPTransport)
-}
-
-func CreateUDPTransport(name string, ctx context.Context, logger logger.ContextLogger, dialer N.Dialer, link string) (Transport, error) {
-	serverURL, err := url.Parse(link)
-	if err != nil || serverURL.Scheme == "" {
-		return NewUDPTransport(name, ctx, dialer, M.ParseSocksaddr(link))
-	}
-	return NewUDPTransport(name, ctx, dialer, M.ParseSocksaddr(serverURL.Host))
+	RegisterTransport([]string{"udp", ""}, func(options TransportOptions) (Transport, error) {
+		return NewUDPTransport(options)
+	})
 }
 
 type UDPTransport struct {
 	myTransportAdapter
 }
 
-func NewUDPTransport(name string, ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr) (*UDPTransport, error) {
+func NewUDPTransport(options TransportOptions) (*UDPTransport, error) {
+	serverURL, err := url.Parse(options.Address)
+	if err != nil {
+		return nil, err
+	}
+	if serverURL.Scheme == "" {
+		serverURL.Host = serverURL.Path
+		serverURL.Path = ""
+	}
+	serverAddr := M.ParseSocksaddr(serverURL.Host)
 	if !serverAddr.IsValid() {
 		return nil, E.New("invalid server address")
 	}
@@ -43,7 +44,7 @@ func NewUDPTransport(name string, ctx context.Context, dialer N.Dialer, serverAd
 		serverAddr.Port = 53
 	}
 	transport := &UDPTransport{
-		newAdapter(name, ctx, dialer, serverAddr),
+		newAdapter(options, serverAddr),
 	}
 	transport.handler = transport
 	return transport, nil

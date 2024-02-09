@@ -8,7 +8,6 @@ import (
 	"sort"
 
 	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
@@ -16,11 +15,9 @@ import (
 )
 
 func init() {
-	RegisterTransport([]string{"local"}, CreateLocalTransport)
-}
-
-func CreateLocalTransport(name string, ctx context.Context, logger logger.ContextLogger, dialer N.Dialer, link string) (Transport, error) {
-	return NewLocalTransport(name, dialer), nil
+	RegisterTransport([]string{"local"}, func(options TransportOptions) (Transport, error) {
+		return NewLocalTransport(options), nil
+	})
 }
 
 var _ Transport = (*LocalTransport)(nil)
@@ -30,12 +27,12 @@ type LocalTransport struct {
 	resolver net.Resolver
 }
 
-func NewLocalTransport(name string, dialer N.Dialer) *LocalTransport {
+func NewLocalTransport(options TransportOptions) *LocalTransport {
 	return &LocalTransport{
-		name: name,
+		name: options.Name,
 		resolver: net.Resolver{
 			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-				return dialer.DialContext(ctx, N.NetworkName(network), M.ParseSocksaddr(address))
+				return options.Dialer.DialContext(ctx, N.NetworkName(network), M.ParseSocksaddr(address))
 			},
 		},
 	}
