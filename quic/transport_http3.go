@@ -14,7 +14,6 @@ import (
 	"github.com/sagernet/quic-go/http3"
 	"github.com/sagernet/sing-dns"
 	"github.com/sagernet/sing/common/bufio"
-	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
@@ -24,16 +23,9 @@ import (
 var _ dns.Transport = (*HTTP3Transport)(nil)
 
 func init() {
-	dns.RegisterTransport([]string{"h3"}, CreateHTTP3Transport)
-}
-
-func CreateHTTP3Transport(name string, ctx context.Context, logger logger.ContextLogger, dialer N.Dialer, link string) (dns.Transport, error) {
-	linkURL, err := url.Parse(link)
-	if err != nil {
-		return nil, err
-	}
-	linkURL.Scheme = "https"
-	return NewHTTP3Transport(name, dialer, linkURL.String()), nil
+	dns.RegisterTransport([]string{"h3"}, func(options dns.TransportOptions) (dns.Transport, error) {
+		return NewHTTP3Transport(options)
+	})
 }
 
 type HTTP3Transport struct {
@@ -42,16 +34,21 @@ type HTTP3Transport struct {
 	transport   *http3.RoundTripper
 }
 
-func NewHTTP3Transport(name string, dialer N.Dialer, serverURL string) *HTTP3Transport {
+func NewHTTP3Transport(options dns.TransportOptions) (*HTTP3Transport, error) {
+	serverURL, err := url.Parse(options.Address)
+	if err != nil {
+		return nil, err
+	}
+	serverURL.Scheme = "https"
 	return &HTTP3Transport{
-		name:        name,
-		destination: serverURL,
+		name:        options.Name,
+		destination: serverURL.String(),
 		transport: &http3.RoundTripper{
 			Dial: func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
 				destinationAddr := M.ParseSocksaddr(addr)
-				conn, err := dialer.DialContext(ctx, N.NetworkUDP, destinationAddr)
-				if err != nil {
-					return nil, err
+				conn, dialErr := options.Dialer.DialContext(ctx, N.NetworkUDP, destinationAddr)
+				if dialErr != nil {
+					return nil, dialErr
 				}
 				return quic.DialEarly(ctx, bufio.NewUnbindPacketConn(conn), conn.RemoteAddr(), tlsCfg, cfg)
 			},
@@ -59,7 +56,7 @@ func NewHTTP3Transport(name string, dialer N.Dialer, serverURL string) *HTTP3Tra
 				NextProtos: []string{"dns"},
 			},
 		},
-	}
+	}, nil
 }
 
 func (t *HTTP3Transport) Name() string {

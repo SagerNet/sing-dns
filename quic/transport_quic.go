@@ -16,7 +16,6 @@ import (
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
-	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
@@ -26,15 +25,9 @@ import (
 var _ dns.Transport = (*Transport)(nil)
 
 func init() {
-	dns.RegisterTransport([]string{"quic"}, CreateTransport)
-}
-
-func CreateTransport(name string, ctx context.Context, logger logger.ContextLogger, dialer N.Dialer, link string) (dns.Transport, error) {
-	serverURL, err := url.Parse(link)
-	if err != nil {
-		return nil, err
-	}
-	return NewTransport(name, ctx, dialer, M.ParseSocksaddr(serverURL.Host))
+	dns.RegisterTransport([]string{"quic"}, func(options dns.TransportOptions) (dns.Transport, error) {
+		return NewTransport(options)
+	})
 }
 
 type Transport struct {
@@ -47,7 +40,12 @@ type Transport struct {
 	connection quic.EarlyConnection
 }
 
-func NewTransport(name string, ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr) (*Transport, error) {
+func NewTransport(options dns.TransportOptions) (*Transport, error) {
+	serverURL, err := url.Parse(options.Address)
+	if err != nil {
+		return nil, err
+	}
+	serverAddr := M.ParseSocksaddr(serverURL.Host)
 	if !serverAddr.IsValid() {
 		return nil, E.New("invalid server address")
 	}
@@ -55,9 +53,9 @@ func NewTransport(name string, ctx context.Context, dialer N.Dialer, serverAddr 
 		serverAddr.Port = 853
 	}
 	return &Transport{
-		name:       name,
-		ctx:        ctx,
-		dialer:     dialer,
+		name:       options.Name,
+		ctx:        options.Context,
+		dialer:     options.Dialer,
 		serverAddr: serverAddr,
 	}, nil
 }

@@ -9,7 +9,6 @@ import (
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
-	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
@@ -19,22 +18,21 @@ import (
 var _ Transport = (*TCPTransport)(nil)
 
 func init() {
-	RegisterTransport([]string{"tcp"}, CreateTCPTransport)
-}
-
-func CreateTCPTransport(name string, ctx context.Context, logger logger.ContextLogger, dialer N.Dialer, link string) (Transport, error) {
-	serverURL, err := url.Parse(link)
-	if err != nil {
-		return nil, err
-	}
-	return NewTCPTransport(name, ctx, dialer, M.ParseSocksaddr(serverURL.Host))
+	RegisterTransport([]string{"tcp"}, func(options TransportOptions) (Transport, error) {
+		return NewTCPTransport(options)
+	})
 }
 
 type TCPTransport struct {
 	myTransportAdapter
 }
 
-func NewTCPTransport(name string, ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr) (*TCPTransport, error) {
+func NewTCPTransport(options TransportOptions) (*TCPTransport, error) {
+	serverURL, err := url.Parse(options.Address)
+	if err != nil {
+		return nil, err
+	}
+	serverAddr := M.ParseSocksaddr(serverURL.Host)
 	if !serverAddr.IsValid() {
 		return nil, E.New("invalid server address")
 	}
@@ -42,7 +40,7 @@ func NewTCPTransport(name string, ctx context.Context, dialer N.Dialer, serverAd
 		serverAddr.Port = 53
 	}
 	transport := &TCPTransport{
-		newAdapter(name, ctx, dialer, serverAddr),
+		newAdapter(options, serverAddr),
 	}
 	transport.handler = transport
 	return transport, nil
