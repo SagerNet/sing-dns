@@ -10,9 +10,7 @@ import (
 	"net/netip"
 	"os"
 
-	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
-	N "github.com/sagernet/sing/common/network"
 
 	"github.com/miekg/dns"
 )
@@ -28,21 +26,19 @@ type HTTPSTransport struct {
 }
 
 func init() {
-	RegisterTransport([]string{"https"}, CreateHTTPSTransport)
+	RegisterTransport([]string{"https"}, func(options TransportOptions) (Transport, error) {
+		return NewHTTPSTransport(options), nil
+	})
 }
 
-func CreateHTTPSTransport(name string, ctx context.Context, logger logger.ContextLogger, dialer N.Dialer, link string) (Transport, error) {
-	return NewHTTPSTransport(name, dialer, link), nil
-}
-
-func NewHTTPSTransport(name string, dialer N.Dialer, serverURL string) *HTTPSTransport {
+func NewHTTPSTransport(options TransportOptions) *HTTPSTransport {
 	return &HTTPSTransport{
-		name:        name,
-		destination: serverURL,
+		name:        options.Name,
+		destination: options.Address,
 		transport: &http.Transport{
 			ForceAttemptHTTP2: true,
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return dialer.DialContext(ctx, network, M.ParseSocksaddr(addr))
+				return options.Dialer.DialContext(ctx, network, M.ParseSocksaddr(addr))
 			},
 			TLSClientConfig: &tls.Config{
 				NextProtos: []string{"dns"},

@@ -117,6 +117,10 @@ func (c *Client) ExchangeWithResponseCheck(ctx context.Context, transport Transp
 		return nil, E.New("DNS query loopback in transport[", contextTransport, "]")
 	}
 	ctx = contextWithTransportName(ctx, transport.Name())
+	clientSubnet, loaded := ClientSubnetFromContext(ctx)
+	if loaded {
+		SetClientSubnet(message, clientSubnet, true)
+	}
 	response, err := transport.Exchange(ctx, message)
 	if err != nil {
 		return nil, err

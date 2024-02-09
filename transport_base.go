@@ -28,19 +28,21 @@ type myTransportAdapter struct {
 	cancel     context.CancelFunc
 	dialer     N.Dialer
 	serverAddr M.Socksaddr
+	clientAddr netip.Addr
 	handler    myTransportHandler
 	access     sync.Mutex
 	conn       *dnsConnection
 }
 
-func newAdapter(name string, ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr) myTransportAdapter {
-	ctx, cancel := context.WithCancel(ctx)
+func newAdapter(options TransportOptions, serverAddr M.Socksaddr) myTransportAdapter {
+	ctx, cancel := context.WithCancel(options.Context)
 	return myTransportAdapter{
-		name:       name,
+		name:       options.Name,
 		ctx:        ctx,
 		cancel:     cancel,
-		dialer:     dialer,
+		dialer:     options.Dialer,
 		serverAddr: serverAddr,
+		clientAddr: options.ClientSubnet,
 	}
 }
 

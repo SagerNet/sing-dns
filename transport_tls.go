@@ -10,7 +10,6 @@ import (
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
-	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
@@ -20,22 +19,21 @@ import (
 var _ Transport = (*TLSTransport)(nil)
 
 func init() {
-	RegisterTransport([]string{"tls"}, CreateTLSTransport)
-}
-
-func CreateTLSTransport(name string, ctx context.Context, logger logger.ContextLogger, dialer N.Dialer, link string) (Transport, error) {
-	serverURL, err := url.Parse(link)
-	if err != nil {
-		return nil, err
-	}
-	return NewTLSTransport(name, ctx, dialer, M.ParseSocksaddr(serverURL.Host))
+	RegisterTransport([]string{"tls"}, func(options TransportOptions) (Transport, error) {
+		return NewTLSTransport(options)
+	})
 }
 
 type TLSTransport struct {
 	myTransportAdapter
 }
 
-func NewTLSTransport(name string, ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr) (*TLSTransport, error) {
+func NewTLSTransport(options TransportOptions) (*TLSTransport, error) {
+	serverURL, err := url.Parse(options.Address)
+	if err != nil {
+		return nil, err
+	}
+	serverAddr := M.ParseSocksaddr(serverURL.Host)
 	if !serverAddr.IsValid() {
 		return nil, E.New("invalid server address")
 	}
@@ -43,7 +41,7 @@ func NewTLSTransport(name string, ctx context.Context, dialer N.Dialer, serverAd
 		serverAddr.Port = 853
 	}
 	transport := &TLSTransport{
-		newAdapter(name, ctx, dialer, serverAddr),
+		newAdapter(options, serverAddr),
 	}
 	transport.handler = transport
 	return transport, nil

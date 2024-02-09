@@ -12,7 +12,7 @@ import (
 	"github.com/miekg/dns"
 )
 
-type TransportConstructor = func(name string, ctx context.Context, logger logger.ContextLogger, dialer N.Dialer, link string) (Transport, error)
+type TransportConstructor = func(options TransportOptions) (Transport, error)
 
 type Transport interface {
 	Name() string
@@ -22,6 +22,15 @@ type Transport interface {
 	Raw() bool
 	Exchange(ctx context.Context, message *dns.Msg) (*dns.Msg, error)
 	Lookup(ctx context.Context, domain string, strategy DomainStrategy) ([]netip.Addr, error)
+}
+
+type TransportOptions struct {
+	Context      context.Context
+	Logger       logger.ContextLogger
+	Name         string
+	Dialer       N.Dialer
+	Address      string
+	ClientSubnet netip.Addr
 }
 
 var transports map[string]TransportConstructor
@@ -35,10 +44,10 @@ func RegisterTransport(schemes []string, constructor TransportConstructor) {
 	}
 }
 
-func CreateTransport(name string, ctx context.Context, logger logger.ContextLogger, dialer N.Dialer, address string) (Transport, error) {
-	constructor := transports[address]
+func CreateTransport(options TransportOptions) (Transport, error) {
+	constructor := transports[options.Address]
 	if constructor == nil {
-		serverURL, _ := url.Parse(address)
+		serverURL, _ := url.Parse(options.Address)
 		var scheme string
 		if serverURL != nil {
 			scheme = serverURL.Scheme
@@ -46,7 +55,15 @@ func CreateTransport(name string, ctx context.Context, logger logger.ContextLogg
 		constructor = transports[scheme]
 	}
 	if constructor == nil {
-		return nil, E.New("unknown DNS server format: " + address)
+		return nil, E.New("unknown DNS server format: " + options.Address)
 	}
-	return constructor(name, contextWithTransportName(ctx, name), logger, dialer, address)
+	options.Context = contextWithTransportName(options.Context, options.Name)
+	transport, err := constructor(options)
+	if err != nil {
+		return nil, err
+	}
+	if options.ClientSubnet.IsValid() {
+		transport = &edns0SubnetTransportWrapper{transport, options.ClientSubnet}
+	}
+	return transport, nil
 }
