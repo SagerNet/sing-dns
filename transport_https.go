@@ -69,8 +69,9 @@ func (t *HTTPSTransport) Raw() bool {
 }
 
 func (t *HTTPSTransport) Exchange(ctx context.Context, message *dns.Msg) (*dns.Msg, error) {
-	message.Id = 0
-	rawMessage, err := message.Pack()
+	exMessage := *message
+	exMessage.Id = 0
+	rawMessage, err := exMessage.Pack()
 	if err != nil {
 		return nil, err
 	}
