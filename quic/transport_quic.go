@@ -121,8 +121,8 @@ func (t *Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg,
 	)
 	for i := 0; i < 2; i++ {
 		conn, err = t.openConnection()
-		if conn == nil {
-			return nil, err
+		if err == nil {
+			break
 		}
 		response, err = t.exchange(ctx, message, conn)
 		if err == nil {
@@ -138,8 +138,9 @@ func (t *Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg,
 }
 
 func (t *Transport) exchange(ctx context.Context, message *mDNS.Msg, conn quic.Connection) (*mDNS.Msg, error) {
-	message.Id = 0
-	rawMessage, err := message.Pack()
+	exMessage := *message
+	exMessage.Id = 0
+	rawMessage, err := exMessage.Pack()
 	if err != nil {
 		return nil, err
 	}
