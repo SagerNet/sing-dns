@@ -5,10 +5,12 @@ import (
 	"context"
 	"crypto/tls"
 	"io"
+	"net"
 	"net/http"
 	"net/netip"
 	"net/url"
 	"os"
+	"sync"
 
 	"github.com/sagernet/quic-go"
 	"github.com/sagernet/quic-go/http3"
@@ -16,6 +18,7 @@ import (
 	"github.com/sagernet/sing/common/bufio"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
+	"github.com/sagernet/sing/common/x/list"
 
 	mDNS "github.com/miekg/dns"
 )
@@ -31,6 +34,7 @@ func init() {
 type HTTP3Transport struct {
 	name        string
 	destination string
+	dialer      *httpDialer
 	transport   *http3.RoundTripper
 }
 
@@ -40,18 +44,13 @@ func NewHTTP3Transport(options dns.TransportOptions) (*HTTP3Transport, error) {
 		return nil, err
 	}
 	serverURL.Scheme = "https"
+	dialer := &httpDialer{Dialer: options.Dialer}
 	return &HTTP3Transport{
 		name:        options.Name,
 		destination: serverURL.String(),
+		dialer:      dialer,
 		transport: &http3.RoundTripper{
-			Dial: func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
-				destinationAddr := M.ParseSocksaddr(addr)
-				conn, dialErr := options.Dialer.DialContext(ctx, N.NetworkUDP, destinationAddr)
-				if dialErr != nil {
-					return nil, dialErr
-				}
-				return quic.DialEarly(ctx, bufio.NewUnbindPacketConn(conn), conn.RemoteAddr(), tlsCfg, cfg)
-			},
+			Dial: dialer.DialContext,
 			TLSClientConfig: &tls.Config{
 				NextProtos: []string{"dns"},
 			},
@@ -68,6 +67,7 @@ func (t *HTTP3Transport) Start() error {
 }
 
 func (t *HTTP3Transport) Reset() {
+	t.dialer.Reset()
 	t.transport.CloseIdleConnections()
 }
 
@@ -93,8 +93,7 @@ func (t *HTTP3Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS
 	request.Header.Set("content-type", dns.MimeType)
 	request.Header.Set("accept", dns.MimeType)
 
-	client := &http.Client{Transport: t.transport}
-	response, err := client.Do(request)
+	response, err := t.transport.RoundTrip(request)
 	if err != nil {
 		return nil, err
 	}
@@ -113,4 +112,55 @@ func (t *HTTP3Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS
 
 func (t *HTTP3Transport) Lookup(ctx context.Context, domain string, strategy dns.DomainStrategy) ([]netip.Addr, error) {
 	return nil, os.ErrInvalid
+}
+
+type httpDialer struct {
+	Dialer      N.Dialer
+	access      sync.Mutex
+	connections list.List[*httpConnWrapper]
+}
+
+func (d *httpDialer) DialContext(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
+	destinationAddr := M.ParseSocksaddr(addr)
+	conn, dialErr := d.Dialer.DialContext(ctx, N.NetworkUDP, destinationAddr)
+	if dialErr != nil {
+		return nil, dialErr
+	}
+	quicConn, err := quic.DialEarly(ctx, bufio.NewUnbindPacketConn(conn), conn.RemoteAddr(), tlsCfg, cfg)
+	if err != nil {
+		return nil, err
+	}
+	wrapper := &httpConnWrapper{EarlyConnection: quicConn, rawConn: conn, dialer: d}
+	d.access.Lock()
+	element := d.connections.PushFront(wrapper)
+	d.access.Unlock()
+	wrapper.element = element
+	return wrapper, nil
+}
+
+func (d *httpDialer) Reset() {
+	d.access.Lock()
+	defer d.access.Unlock()
+	for element := d.connections.Front(); element != nil; element = element.Next() {
+		element.Value.Close()
+	}
+	d.connections.Init()
+}
+
+type httpConnWrapper struct {
+	quic.EarlyConnection
+	rawConn net.Conn
+	dialer  *httpDialer
+	element *list.Element[*httpConnWrapper]
+}
+
+func (c *httpConnWrapper) Close() error {
+	if c.element != nil {
+		c.dialer.access.Lock()
+		c.dialer.connections.Remove(c.element)
+		c.dialer.access.Unlock()
+		c.element = nil
+	}
+	c.EarlyConnection.CloseWithError(0, "")
+	return c.rawConn.Close()
 }

@@ -9,8 +9,11 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+	"sync"
 
 	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
+	"github.com/sagernet/sing/common/x/list"
 
 	"github.com/miekg/dns"
 )
@@ -22,6 +25,7 @@ var _ Transport = (*HTTPSTransport)(nil)
 type HTTPSTransport struct {
 	name        string
 	destination string
+	dialer      *httpDialer
 	transport   *http.Transport
 }
 
@@ -32,14 +36,14 @@ func init() {
 }
 
 func NewHTTPSTransport(options TransportOptions) *HTTPSTransport {
+	dialer := &httpDialer{Dialer: options.Dialer}
 	return &HTTPSTransport{
 		name:        options.Name,
 		destination: options.Address,
+		dialer:      dialer,
 		transport: &http.Transport{
 			ForceAttemptHTTP2: true,
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return options.Dialer.DialContext(ctx, network, M.ParseSocksaddr(addr))
-			},
+			DialContext:       dialer.DialContext,
 			TLSClientConfig: &tls.Config{
 				NextProtos: []string{"dns"},
 			},
@@ -56,6 +60,7 @@ func (t *HTTPSTransport) Start() error {
 }
 
 func (t *HTTPSTransport) Reset() {
+	t.dialer.Reset()
 	t.transport.CloseIdleConnections()
 }
 
@@ -81,9 +86,7 @@ func (t *HTTPSTransport) Exchange(ctx context.Context, message *dns.Msg) (*dns.M
 	}
 	request.Header.Set("content-type", MimeType)
 	request.Header.Set("accept", MimeType)
-
-	client := &http.Client{Transport: t.transport}
-	response, err := client.Do(request)
+	response, err := t.transport.RoundTrip(request)
 	if err != nil {
 		return nil, err
 	}
@@ -102,4 +105,46 @@ func (t *HTTPSTransport) Exchange(ctx context.Context, message *dns.Msg) (*dns.M
 
 func (t *HTTPSTransport) Lookup(ctx context.Context, domain string, strategy DomainStrategy) ([]netip.Addr, error) {
 	return nil, os.ErrInvalid
+}
+
+type httpDialer struct {
+	Dialer      N.Dialer
+	access      sync.Mutex
+	connections list.List[net.Conn]
+}
+
+func (d *httpDialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	conn, err := d.Dialer.DialContext(ctx, network, M.ParseSocksaddr(addr))
+	if err != nil {
+		return nil, err
+	}
+	d.access.Lock()
+	element := d.connections.PushFront(conn)
+	d.access.Unlock()
+	return &httpConnWrapper{conn, d, element}, nil
+}
+
+func (d *httpDialer) Reset() {
+	d.access.Lock()
+	defer d.access.Unlock()
+	for element := d.connections.Front(); element != nil; element = element.Next() {
+		element.Value.Close()
+	}
+	d.connections.Init()
+}
+
+type httpConnWrapper struct {
+	net.Conn
+	dialer  *httpDialer
+	element *list.Element[net.Conn]
+}
+
+func (c *httpConnWrapper) Close() error {
+	if c.element != nil {
+		c.dialer.access.Lock()
+		c.dialer.connections.Remove(c.element)
+		c.dialer.access.Unlock()
+		c.element = nil
+	}
+	return c.Conn.Close()
 }
