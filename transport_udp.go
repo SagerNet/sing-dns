@@ -28,15 +28,12 @@ type UDPTransport struct {
 }
 
 func NewUDPTransport(options TransportOptions) (*UDPTransport, error) {
-	serverURL, err := url.Parse(options.Address)
-	if err != nil {
-		return nil, err
+	var serverAddr M.Socksaddr
+	if serverURL, err := url.Parse(options.Address); err != nil || serverURL.Scheme == "" {
+		serverAddr = M.ParseSocksaddr(options.Address)
+	} else {
+		serverAddr = M.ParseSocksaddr(serverURL.Host)
 	}
-	if serverURL.Scheme == "" {
-		serverURL.Host = serverURL.Path
-		serverURL.Path = ""
-	}
-	serverAddr := M.ParseSocksaddr(serverURL.Host)
 	if !serverAddr.IsValid() {
 		return nil, E.New("invalid server address")
 	}
