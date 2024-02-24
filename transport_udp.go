@@ -8,12 +8,11 @@ import (
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 
 	"github.com/miekg/dns"
 )
-
-const FixedPacketSize = 16384
 
 var _ Transport = (*UDPTransport)(nil)
 
@@ -25,6 +24,9 @@ func init() {
 
 type UDPTransport struct {
 	myTransportAdapter
+	tcpTransport *TCPTransport
+	logger       logger.ContextLogger
+	udpSize      int
 }
 
 func NewUDPTransport(options TransportOptions) (*UDPTransport, error) {
@@ -42,9 +44,24 @@ func NewUDPTransport(options TransportOptions) (*UDPTransport, error) {
 	}
 	transport := &UDPTransport{
 		newAdapter(options, serverAddr),
+		newTCPTransport(options, serverAddr),
+		options.Logger,
+		512,
 	}
 	transport.handler = transport
 	return transport, nil
+}
+
+func (t *UDPTransport) Exchange(ctx context.Context, message *dns.Msg) (*dns.Msg, error) {
+	response, err := t.myTransportAdapter.Exchange(ctx, message)
+	if err != nil {
+		return nil, err
+	}
+	if response.Truncated {
+		t.logger.InfoContext(ctx, "response truncated, retrying with TCP")
+		return t.tcpTransport.Exchange(ctx, message)
+	}
+	return response, nil
 }
 
 func (t *UDPTransport) DialContext(ctx context.Context) (net.Conn, error) {
@@ -52,7 +69,7 @@ func (t *UDPTransport) DialContext(ctx context.Context) (net.Conn, error) {
 }
 
 func (t *UDPTransport) ReadMessage(conn net.Conn) (*dns.Msg, error) {
-	buffer := buf.NewSize(FixedPacketSize)
+	buffer := buf.NewSize(t.udpSize)
 	defer buffer.Release()
 	_, err := buffer.ReadOnceFrom(conn)
 	if err != nil {
@@ -64,6 +81,11 @@ func (t *UDPTransport) ReadMessage(conn net.Conn) (*dns.Msg, error) {
 }
 
 func (t *UDPTransport) WriteMessage(conn net.Conn, message *dns.Msg) error {
+	if edns0Opt := message.IsEdns0(); edns0Opt != nil {
+		if udpSize := int(edns0Opt.UDPSize()); udpSize > t.udpSize {
+			udpSize = t.udpSize
+		}
+	}
 	rawMessage, err := message.Pack()
 	if err != nil {
 		return err
