@@ -8,6 +8,7 @@ import (
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 
 	"github.com/miekg/dns"
@@ -25,6 +26,8 @@ func init() {
 
 type UDPTransport struct {
 	myTransportAdapter
+	tcpTransport *TCPTransport
+	logger       logger.ContextLogger
 }
 
 func NewUDPTransport(options TransportOptions) (*UDPTransport, error) {
@@ -40,11 +43,29 @@ func NewUDPTransport(options TransportOptions) (*UDPTransport, error) {
 	if serverAddr.Port == 0 {
 		serverAddr.Port = 53
 	}
+	tcpTransport, err := NewTCPTransport(options)
+	if err != nil {
+		return nil, err
+	}
 	transport := &UDPTransport{
 		newAdapter(options, serverAddr),
+		tcpTransport,
+		options.Logger,
 	}
 	transport.handler = transport
 	return transport, nil
+}
+
+func (t *UDPTransport) Exchange(ctx context.Context, message *dns.Msg) (*dns.Msg, error) {
+	response, err := t.myTransportAdapter.Exchange(ctx, message)
+	if err != nil {
+		return nil, err
+	}
+	if response.Truncated {
+		t.logger.InfoContext(ctx, "response truncated, retrying with TCP")
+		return t.tcpTransport.Exchange(ctx, message)
+	}
+	return response, nil
 }
 
 func (t *UDPTransport) DialContext(ctx context.Context) (net.Conn, error) {
