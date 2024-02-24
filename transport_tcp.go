@@ -39,11 +39,15 @@ func NewTCPTransport(options TransportOptions) (*TCPTransport, error) {
 	if serverAddr.Port == 0 {
 		serverAddr.Port = 53
 	}
+	return newTCPTransport(options, serverAddr), nil
+}
+
+func newTCPTransport(options TransportOptions, serverAddr M.Socksaddr) *TCPTransport {
 	transport := &TCPTransport{
 		newAdapter(options, serverAddr),
 	}
 	transport.handler = transport
-	return transport, nil
+	return transport
 }
 
 func (t *TCPTransport) DialContext(ctx context.Context) (net.Conn, error) {

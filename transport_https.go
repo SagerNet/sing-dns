@@ -57,6 +57,7 @@ func (t *HTTPSTransport) Start() error {
 
 func (t *HTTPSTransport) Reset() {
 	t.transport.CloseIdleConnections()
+	t.transport = t.transport.Clone()
 }
 
 func (t *HTTPSTransport) Close() error {
