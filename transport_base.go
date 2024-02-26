@@ -118,37 +118,41 @@ func (t *myTransportAdapter) recvLoop(conn *dnsConnection) {
 
 func (t *myTransportAdapter) Exchange(ctx context.Context, message *dns.Msg) (*dns.Msg, error) {
 	messageId := message.Id
-	var response *dns.Msg
-	var err error
-	for attempts := 0; attempts < 3; attempts++ {
-		response, err = t.exchange(ctx, message)
-		if err != nil && !common.Done(ctx) {
-			continue
+	var (
+		conn *dnsConnection
+		err  error
+	)
+	for attempts := 0; attempts < 2; attempts++ {
+		conn, err = t.open(t.ctx)
+		if err == nil {
+			break
 		}
-		break
 	}
-	if err == nil {
-		response.Id = messageId
-	}
-	return response, err
-}
-
-func (t *myTransportAdapter) exchange(ctx context.Context, message *dns.Msg) (*dns.Msg, error) {
-	conn, err := t.open(t.ctx)
 	if err != nil {
 		return nil, err
 	}
+	response, err := t.exchange(ctx, conn, message)
+	if err != nil {
+		return nil, err
+	}
+	response.Id = messageId
+	return response, nil
+}
+
+func (t *myTransportAdapter) exchange(ctx context.Context, conn *dnsConnection, message *dns.Msg) (*dns.Msg, error) {
+	messageId := message.Id
 	callback := &dnsCallback{
 		done: make(chan struct{}),
 	}
+	exMessage := *message
 	conn.access.Lock()
 	conn.queryId++
-	message.Id = conn.queryId
-	conn.callbacks[message.Id] = callback
+	exMessage.Id = conn.queryId
+	conn.callbacks[exMessage.Id] = callback
 	conn.access.Unlock()
-	defer t.cleanup(conn, message.Id, callback)
+	defer t.cleanup(conn, exMessage.Id, callback)
 	conn.writeAccess.Lock()
-	err = t.handler.WriteMessage(conn, message)
+	err := t.handler.WriteMessage(conn, &exMessage)
 	conn.writeAccess.Unlock()
 	if err != nil {
 		conn.cancel()
@@ -156,6 +160,7 @@ func (t *myTransportAdapter) exchange(ctx context.Context, message *dns.Msg) (*d
 	}
 	select {
 	case <-callback.done:
+		callback.message.Id = messageId
 		return callback.message, nil
 	case <-conn.ctx.Done():
 		return nil, E.Errors(conn.err, conn.ctx.Err())

@@ -80,8 +80,9 @@ func (t *HTTP3Transport) Raw() bool {
 }
 
 func (t *HTTP3Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
-	message.Id = 0
-	rawMessage, err := message.Pack()
+	exMessage := *message
+	exMessage.Id = 0
+	rawMessage, err := exMessage.Pack()
 	if err != nil {
 		return nil, err
 	}
