@@ -83,10 +83,14 @@ func (t *UDPTransport) ReadMessage(conn net.Conn) (*dns.Msg, error) {
 func (t *UDPTransport) WriteMessage(conn net.Conn, message *dns.Msg) error {
 	if edns0Opt := message.IsEdns0(); edns0Opt != nil {
 		if udpSize := int(edns0Opt.UDPSize()); udpSize > t.udpSize {
-			udpSize = t.udpSize
+			t.udpSize = udpSize
 		}
 	}
-	rawMessage, err := message.Pack()
+	buffer := buf.NewSize(1 + message.Len())
+	defer buffer.Release()
+	exMessage := *message
+	exMessage.Compress = true
+	rawMessage, err := exMessage.PackBuffer(buffer.FreeBytes())
 	if err != nil {
 		return err
 	}

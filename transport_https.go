@@ -10,6 +10,8 @@ import (
 	"net/netip"
 	"os"
 
+	"github.com/sagernet/sing/common/buf"
+	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 
 	"github.com/miekg/dns"
@@ -72,29 +74,45 @@ func (t *HTTPSTransport) Raw() bool {
 func (t *HTTPSTransport) Exchange(ctx context.Context, message *dns.Msg) (*dns.Msg, error) {
 	exMessage := *message
 	exMessage.Id = 0
-	rawMessage, err := exMessage.Pack()
+	exMessage.Compress = true
+	requestBuffer := buf.NewSize(1 + message.Len())
+	rawMessage, err := exMessage.PackBuffer(requestBuffer.FreeBytes())
 	if err != nil {
+		requestBuffer.Release()
 		return nil, err
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, t.destination, bytes.NewReader(rawMessage))
 	if err != nil {
+		requestBuffer.Release()
 		return nil, err
 	}
-	request.Header.Set("content-type", MimeType)
-	request.Header.Set("accept", MimeType)
-
-	client := &http.Client{Transport: t.transport}
-	response, err := client.Do(request)
+	request.Header.Set("Content-Type", MimeType)
+	request.Header.Set("Accept", MimeType)
+	response, err := t.transport.RoundTrip(request)
+	requestBuffer.Release()
 	if err != nil {
 		return nil, err
 	}
 	defer response.Body.Close()
-	rawMessage, err = io.ReadAll(response.Body)
-	if err != nil {
-		return nil, err
+	if response.StatusCode != http.StatusOK {
+		return nil, E.New("unexpected status: ", response.Status)
 	}
 	var responseMessage dns.Msg
-	err = responseMessage.Unpack(rawMessage)
+	if response.ContentLength > 0 {
+		responseBuffer := buf.NewSize(int(response.ContentLength))
+		_, err = responseBuffer.ReadFullFrom(response.Body, int(response.ContentLength))
+		if err != nil {
+			return nil, err
+		}
+		err = responseMessage.Unpack(responseBuffer.Bytes())
+		responseBuffer.Release()
+	} else {
+		rawMessage, err = io.ReadAll(response.Body)
+		if err != nil {
+			return nil, err
+		}
+		err = responseMessage.Unpack(rawMessage)
+	}
 	if err != nil {
 		return nil, err
 	}

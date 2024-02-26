@@ -13,7 +13,9 @@ import (
 	"github.com/sagernet/quic-go"
 	"github.com/sagernet/quic-go/http3"
 	"github.com/sagernet/sing-dns"
+	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
+	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
@@ -82,29 +84,45 @@ func (t *HTTP3Transport) Raw() bool {
 func (t *HTTP3Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
 	exMessage := *message
 	exMessage.Id = 0
-	rawMessage, err := exMessage.Pack()
+	exMessage.Compress = true
+	requestBuffer := buf.NewSize(1 + message.Len())
+	rawMessage, err := exMessage.PackBuffer(requestBuffer.FreeBytes())
 	if err != nil {
+		requestBuffer.Release()
 		return nil, err
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, t.destination, bytes.NewReader(rawMessage))
 	if err != nil {
+		requestBuffer.Release()
 		return nil, err
 	}
-	request.Header.Set("content-type", dns.MimeType)
-	request.Header.Set("accept", dns.MimeType)
-
-	client := &http.Client{Transport: t.transport}
-	response, err := client.Do(request)
+	request.Header.Set("Content-Type", dns.MimeType)
+	request.Header.Set("Accept", dns.MimeType)
+	response, err := t.transport.RoundTrip(request)
+	requestBuffer.Release()
 	if err != nil {
 		return nil, err
 	}
 	defer response.Body.Close()
-	rawMessage, err = io.ReadAll(response.Body)
-	if err != nil {
-		return nil, err
+	if response.StatusCode != http.StatusOK {
+		return nil, E.New("unexpected status: ", response.Status)
 	}
 	var responseMessage mDNS.Msg
-	err = responseMessage.Unpack(rawMessage)
+	if response.ContentLength > 0 {
+		responseBuffer := buf.NewSize(int(response.ContentLength))
+		_, err = responseBuffer.ReadFullFrom(response.Body, int(response.ContentLength))
+		if err != nil {
+			return nil, err
+		}
+		err = responseMessage.Unpack(responseBuffer.Bytes())
+		responseBuffer.Release()
+	} else {
+		rawMessage, err = io.ReadAll(response.Body)
+		if err != nil {
+			return nil, err
+		}
+		err = responseMessage.Unpack(rawMessage)
+	}
 	if err != nil {
 		return nil, err
 	}

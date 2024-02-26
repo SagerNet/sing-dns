@@ -75,13 +75,16 @@ func (t *TCPTransport) ReadMessage(conn net.Conn) (*dns.Msg, error) {
 }
 
 func (t *TCPTransport) WriteMessage(conn net.Conn, message *dns.Msg) error {
-	rawMessage, err := message.Pack()
+	requestLen := message.Len()
+	buffer := buf.NewSize(3 + requestLen)
+	defer buffer.Release()
+	common.Must(binary.Write(buffer, binary.BigEndian, uint16(requestLen)))
+	exMessage := *message
+	exMessage.Compress = true
+	rawMessage, err := exMessage.PackBuffer(buffer.FreeBytes())
 	if err != nil {
 		return err
 	}
-	buffer := buf.NewSize(2 + len(rawMessage))
-	defer buffer.Release()
-	common.Must(binary.Write(buffer, binary.BigEndian, uint16(len(rawMessage))))
-	common.Must1(buffer.Write(rawMessage))
+	buffer.Truncate(2 + len(rawMessage))
 	return common.Error(conn.Write(buffer.Bytes()))
 }
