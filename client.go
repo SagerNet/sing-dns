@@ -14,6 +14,7 @@ import (
 	"github.com/sagernet/sing/common/task"
 
 	"github.com/miekg/dns"
+	"golang.org/x/exp/slices"
 )
 
 const DefaultTTL = 600
@@ -84,7 +85,7 @@ func (c *Client) Exchange(ctx context.Context, transport Transport, message *dns
 }
 
 func (c *Client) ExchangeWithResponseCheck(ctx context.Context, transport Transport, message *dns.Msg, strategy DomainStrategy, responseChecker func(response *dns.Msg) bool) (*dns.Msg, error) {
-	if len(message.Question) != 1 {
+	if len(message.Question) == 0 {
 		if c.logger != nil {
 			c.logger.WarnContext(ctx, "bad question size: ", len(message.Question))
 		}
@@ -99,7 +100,10 @@ func (c *Client) ExchangeWithResponseCheck(ctx context.Context, transport Transp
 		return &responseMessage, nil
 	}
 	question := message.Question[0]
-	disableCache := c.disableCache || DisableCacheFromContext(ctx)
+	isSimpleRequest := len(message.Question) == 1 &&
+		len(message.Ns) == 0 &&
+		len(message.Extra) == 0
+	disableCache := isSimpleRequest || c.disableCache || DisableCacheFromContext(ctx)
 	if !disableCache {
 		response, ttl := c.loadResponse(question, transport)
 		if response != nil {
@@ -123,7 +127,7 @@ func (c *Client) ExchangeWithResponseCheck(ctx context.Context, transport Transp
 		return &responseMessage, nil
 	}
 	if !transport.Raw() {
-		if question.Qtype == dns.TypeA || question.Qtype == dns.TypeAAAA {
+		if isSimpleRequest && (question.Qtype == dns.TypeA || question.Qtype == dns.TypeAAAA) {
 			return c.exchangeToLookup(ctx, transport, message, question)
 		}
 		return nil, ErrNoRawSupport
@@ -174,6 +178,10 @@ func (c *Client) ExchangeWithResponseCheck(ctx context.Context, transport Transp
 
 	response.Id = messageId
 	if !disableCache {
+		// rfc2671 section 5.2
+		response.Extra = slices.DeleteFunc(response.Extra, func(extra dns.RR) bool {
+			return extra.Header().Rrtype == dns.TypeOPT
+		})
 		c.storeCache(transport, question, response, timeToLive)
 	}
 
