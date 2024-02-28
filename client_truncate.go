@@ -1,37 +1,29 @@
 package dns
 
-import "github.com/miekg/dns"
+import (
+	"github.com/sagernet/sing/common/buf"
 
-func TruncateDNSMessage(request *dns.Msg, response *dns.Msg) (*dns.Msg, int) {
+	"github.com/miekg/dns"
+)
+
+func TruncateDNSMessage(request *dns.Msg, response *dns.Msg, headroom int) (*buf.Buffer, error) {
 	maxLen := 512
 	if edns0Option := request.IsEdns0(); edns0Option != nil {
-		if udpSize := int(edns0Option.UDPSize()); udpSize > 0 {
+		if udpSize := int(edns0Option.UDPSize()); udpSize > 512 {
 			maxLen = udpSize
 		}
 	}
-	return truncateDNSMessage(response, maxLen)
-}
-
-func truncateDNSMessage(response *dns.Msg, maxLen int) (*dns.Msg, int) {
 	responseLen := response.Len()
-	if responseLen <= maxLen {
-		return response, responseLen
-	}
-	newResponse := *response
-	response = &newResponse
-	response.Compress = true
-	responseLen = response.Len()
-	if responseLen <= maxLen {
-		return response, responseLen
-	}
-	for len(response.Answer) > 0 && responseLen > maxLen {
-		response.Answer = response.Answer[:len(response.Answer)-1]
-		response.Truncated = true
-		responseLen = response.Len()
-	}
 	if responseLen > maxLen {
-		response.Ns = nil
-		response.Extra = nil
+		response.Truncate(maxLen)
 	}
-	return response, response.Len()
+	buffer := buf.NewSize(headroom*2 + 1 + responseLen)
+	buffer.Resize(headroom, 0)
+	rawMessage, err := response.PackBuffer(buffer.FreeBytes())
+	if err != nil {
+		buffer.Release()
+		return nil, err
+	}
+	buffer.Truncate(len(rawMessage))
+	return buffer, nil
 }
