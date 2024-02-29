@@ -18,10 +18,14 @@ func (t *edns0SubnetTransportWrapper) Exchange(ctx context.Context, message *dns
 }
 
 func SetClientSubnet(message *dns.Msg, clientSubnet netip.Addr, override bool) {
-	var subnetOption *dns.EDNS0_SUBNET
+	var (
+		optRecord    *dns.OPT
+		subnetOption *dns.EDNS0_SUBNET
+	)
 findExists:
 	for _, record := range message.Extra {
-		if optRecord, isOPTRecord := record.(*dns.OPT); isOPTRecord {
+		var isOPTRecord bool
+		if optRecord, isOPTRecord = record.(*dns.OPT); isOPTRecord {
 			for _, option := range optRecord.Option {
 				var isEDNS0Subnet bool
 				subnetOption, isEDNS0Subnet = option.(*dns.EDNS0_SUBNET)
@@ -34,15 +38,18 @@ findExists:
 			}
 		}
 	}
-	if subnetOption == nil {
-		subnetOption = new(dns.EDNS0_SUBNET)
-		message.Extra = append(message.Extra, &dns.OPT{
+	if optRecord == nil {
+		optRecord = &dns.OPT{
 			Hdr: dns.RR_Header{
 				Name:   ".",
 				Rrtype: dns.TypeOPT,
 			},
-			Option: []dns.EDNS0{subnetOption},
-		})
+		}
+		message.Extra = append(message.Extra, optRecord)
+	}
+	if subnetOption == nil {
+		subnetOption = new(dns.EDNS0_SUBNET)
+		optRecord.Option = append(optRecord.Option, subnetOption)
 	}
 	subnetOption.Code = dns.EDNS0SUBNET
 	if clientSubnet.Is4() {
