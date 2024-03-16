@@ -76,7 +76,7 @@ func (t *myTransportAdapter) open(ctx context.Context) (*dnsConnection, error) {
 		Conn:      conn,
 		ctx:       connCtx,
 		cancel:    cancel,
-		callbacks: make(map[uint16]chan *dns.Msg),
+		callbacks: make(map[uint16]*dnsCallback),
 	}
 	go t.recvLoop(connection)
 	t.conn = connection
@@ -97,10 +97,14 @@ func (t *myTransportAdapter) recvLoop(conn *dnsConnection) {
 			if !loaded {
 				continue
 			}
+			callback.access.Lock()
 			select {
-			case callback <- message:
+			case <-callback.done:
 			default:
+				callback.message = message
+				close(callback.done)
 			}
+			callback.access.Unlock()
 		}
 	})
 	group.Cleanup(func() {
@@ -132,7 +136,9 @@ func (t *myTransportAdapter) exchange(ctx context.Context, message *dns.Msg) (*d
 	if err != nil {
 		return nil, err
 	}
-	callback := make(chan *dns.Msg)
+	callback := &dnsCallback{
+		done: make(chan struct{}),
+	}
 	conn.access.Lock()
 	conn.queryId++
 	message.Id = conn.queryId
@@ -147,8 +153,8 @@ func (t *myTransportAdapter) exchange(ctx context.Context, message *dns.Msg) (*d
 		return nil, err
 	}
 	select {
-	case response := <-callback:
-		return response, nil
+	case <-callback.done:
+		return callback.message, nil
 	case <-conn.ctx.Done():
 		return nil, E.Errors(conn.err, conn.ctx.Err())
 	case <-ctx.Done():
@@ -157,11 +163,17 @@ func (t *myTransportAdapter) exchange(ctx context.Context, message *dns.Msg) (*d
 	}
 }
 
-func (t *myTransportAdapter) cleanup(conn *dnsConnection, messageId uint16, callback chan *dns.Msg) {
+func (t *myTransportAdapter) cleanup(conn *dnsConnection, messageId uint16, callback *dnsCallback) {
 	conn.access.Lock()
 	delete(conn.callbacks, messageId)
 	conn.access.Unlock()
-	close(callback)
+	callback.access.Lock()
+	select {
+	case <-callback.done:
+	default:
+		close(callback.done)
+	}
+	callback.access.Unlock()
 }
 
 func (t *myTransportAdapter) Reset() {
@@ -193,5 +205,11 @@ type dnsConnection struct {
 	writeAccess sync.Mutex
 	err         error
 	queryId     uint16
-	callbacks   map[uint16]chan *dns.Msg
+	callbacks   map[uint16]*dnsCallback
+}
+
+type dnsCallback struct {
+	access  sync.Mutex
+	message *dns.Msg
+	done    chan struct{}
 }
