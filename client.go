@@ -79,6 +79,23 @@ func (c *Client) Start() {
 	}
 }
 
+type exchangeRusult struct {
+	res *dns.Msg
+	err error
+}
+
+func exchangeToChan(ctx context.Context, message *dns.Msg, transport Transport) chan exchangeRusult {
+	result := make(chan exchangeRusult, 1)
+	go func(ctx context.Context, message *dns.Msg, transport Transport) {
+		response, err := transport.Exchange(ctx, message)
+		result <- exchangeRusult{
+			res: response,
+			err: err,
+		}
+	}(ctx, message, transport)
+	return result
+}
+
 func (c *Client) Exchange(ctx context.Context, transport Transport, message *dns.Msg, strategy DomainStrategy) (*dns.Msg, error) {
 	return c.ExchangeWithResponseCheck(ctx, transport, message, strategy, nil)
 }
@@ -99,8 +116,11 @@ func (c *Client) ExchangeWithResponseCheck(ctx context.Context, transport Transp
 		return &responseMessage, nil
 	}
 	question := message.Question[0]
+	var rawMsg *dns.Msg
 	clientSubnet, clientSubnetLoaded := ClientSubnetFromContext(ctx)
+	clientSubnetSet := clientSubnetLoaded
 	if clientSubnetLoaded {
+		rawMsg = message.Copy()
 		SetClientSubnet(message, clientSubnet, true)
 	}
 	isSimpleRequest := len(message.Question) == 1 &&
@@ -148,7 +168,35 @@ func (c *Client) ExchangeWithResponseCheck(ctx context.Context, transport Transp
 			return nil, ErrResponseRejectedCached
 		}
 	}
-	response, err := transport.Exchange(ctx, message)
+	var (
+		response *dns.Msg
+		err      error
+	)
+	if !clientSubnetSet {
+		response, err = transport.Exchange(ctx, message)
+	} else {
+		realTransport := transport
+		if sTransport, ok := transport.(*edns0SubnetTransportWrapper); ok {
+			realTransport = sTransport.Transport
+		}
+		withClientSubnet := exchangeToChan(ctx, message, realTransport)
+		withoutClientSubnet := exchangeToChan(ctx, rawMsg, realTransport)
+		if res := <-withClientSubnet; res.err != nil || res.res.Rcode != dns.RcodeRefused {
+			close(withClientSubnet)
+			go func(chan exchangeRusult) {
+				<-withoutClientSubnet
+				close(withoutClientSubnet)
+			}(withoutClientSubnet)
+			response = res.res
+			err = res.err
+		} else {
+			res := <-withoutClientSubnet
+			close(withClientSubnet)
+			close(withoutClientSubnet)
+			response = res.res
+			err = res.err
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
