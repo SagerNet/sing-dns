@@ -13,11 +13,27 @@ type edns0SubnetTransportWrapper struct {
 }
 
 func (t *edns0SubnetTransportWrapper) Exchange(ctx context.Context, message *dns.Msg) (*dns.Msg, error) {
-	SetClientSubnet(message, t.clientSubnet, false)
-	return t.Transport.Exchange(ctx, message)
+	rawMsg := message.Copy()
+	if !SetClientSubnet(message, t.clientSubnet, false) {
+		return t.Transport.Exchange(ctx, message)
+	}
+	withClientSubnet := exchangeToChan(ctx, message, t.Transport)
+	withoutClientSubnet := exchangeToChan(ctx, rawMsg, t.Transport)
+	if res := <-withClientSubnet; res.err != nil || res.res.Rcode != dns.RcodeRefused {
+		close(withClientSubnet)
+		go func(chan exchangeRusult) {
+			<-withoutClientSubnet
+			close(withoutClientSubnet)
+		}(withoutClientSubnet)
+		return res.res, res.err
+	}
+	res := <-withoutClientSubnet
+	close(withClientSubnet)
+	close(withoutClientSubnet)
+	return res.res, res.err
 }
 
-func SetClientSubnet(message *dns.Msg, clientSubnet netip.Addr, override bool) {
+func SetClientSubnet(message *dns.Msg, clientSubnet netip.Addr, override bool) bool {
 	var (
 		optRecord    *dns.OPT
 		subnetOption *dns.EDNS0_SUBNET
@@ -31,7 +47,7 @@ findExists:
 				subnetOption, isEDNS0Subnet = option.(*dns.EDNS0_SUBNET)
 				if isEDNS0Subnet {
 					if !override {
-						return
+						return false
 					}
 					break findExists
 				}
@@ -59,4 +75,5 @@ findExists:
 	}
 	subnetOption.SourceNetmask = uint8(clientSubnet.BitLen())
 	subnetOption.Address = clientSubnet.AsSlice()
+	return true
 }
