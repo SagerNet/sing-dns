@@ -128,6 +128,9 @@ func (c *Client) ExchangeWithResponseCheck(ctx context.Context, transport Transp
 		if c.logger != nil {
 			c.logger.DebugContext(ctx, "strategy rejected")
 		}
+		if responseChecker != nil {
+			return &responseMessage, ErrResponseRejected
+		}
 		return &responseMessage, nil
 	}
 	if !transport.Raw() {
