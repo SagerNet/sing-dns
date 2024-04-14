@@ -8,8 +8,6 @@ import (
 	"sort"
 
 	"github.com/sagernet/sing/common"
-	M "github.com/sagernet/sing/common/metadata"
-	N "github.com/sagernet/sing/common/network"
 
 	"github.com/miekg/dns"
 )
@@ -30,11 +28,6 @@ type LocalTransport struct {
 func NewLocalTransport(options TransportOptions) *LocalTransport {
 	return &LocalTransport{
 		name: options.Name,
-		resolver: net.Resolver{
-			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-				return options.Dialer.DialContext(ctx, N.NetworkName(network), M.ParseSocksaddr(address))
-			},
-		},
 	}
 }
 
@@ -71,7 +64,7 @@ func (t *LocalTransport) Lookup(ctx context.Context, domain string, strategy Dom
 	case DomainStrategyUseIPv6:
 		network = "ip6"
 	}
-	addrs, err := t.resolver.LookupNetIP(ctx, network, domain)
+	addrs, err := t.resolver.LookupNetIP(context.Background(), network, domain)
 	if err != nil {
 		return nil, err
 	}
