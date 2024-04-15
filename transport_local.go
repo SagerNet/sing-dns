@@ -64,7 +64,7 @@ func (t *LocalTransport) Lookup(ctx context.Context, domain string, strategy Dom
 	case DomainStrategyUseIPv6:
 		network = "ip6"
 	}
-	addrs, err := t.resolver.LookupNetIP(context.Background(), network, domain)
+	addrs, err := t.resolver.LookupNetIP(ctx, network, domain)
 	if err != nil {
 		return nil, err
 	}
