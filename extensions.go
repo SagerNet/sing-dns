@@ -46,11 +46,11 @@ func transportNameFromContext(ctx context.Context) (string, bool) {
 
 type clientSubnetKey struct{}
 
-func ContextWithClientSubnet(ctx context.Context, clientSubnet netip.Addr) context.Context {
+func ContextWithClientSubnet(ctx context.Context, clientSubnet netip.Prefix) context.Context {
 	return context.WithValue(ctx, clientSubnetKey{}, clientSubnet)
 }
 
-func ClientSubnetFromContext(ctx context.Context) (netip.Addr, bool) {
-	clientSubnet, ok := ctx.Value(clientSubnetKey{}).(netip.Addr)
+func ClientSubnetFromContext(ctx context.Context) (netip.Prefix, bool) {
+	clientSubnet, ok := ctx.Value(clientSubnetKey{}).(netip.Prefix)
 	return clientSubnet, ok
 }

@@ -28,7 +28,7 @@ type myTransportAdapter struct {
 	cancel     context.CancelFunc
 	dialer     N.Dialer
 	serverAddr M.Socksaddr
-	clientAddr netip.Addr
+	clientAddr netip.Prefix
 	handler    myTransportHandler
 	access     sync.Mutex
 	conn       *dnsConnection

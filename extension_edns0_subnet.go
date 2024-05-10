@@ -9,7 +9,7 @@ import (
 
 type edns0SubnetTransportWrapper struct {
 	Transport
-	clientSubnet netip.Addr
+	clientSubnet netip.Prefix
 }
 
 func (t *edns0SubnetTransportWrapper) Exchange(ctx context.Context, message *dns.Msg) (*dns.Msg, error) {
@@ -17,7 +17,7 @@ func (t *edns0SubnetTransportWrapper) Exchange(ctx context.Context, message *dns
 	return t.Transport.Exchange(ctx, message)
 }
 
-func SetClientSubnet(message *dns.Msg, clientSubnet netip.Addr, override bool) {
+func SetClientSubnet(message *dns.Msg, clientSubnet netip.Prefix, override bool) {
 	var (
 		optRecord    *dns.OPT
 		subnetOption *dns.EDNS0_SUBNET
@@ -52,11 +52,11 @@ findExists:
 		optRecord.Option = append(optRecord.Option, subnetOption)
 	}
 	subnetOption.Code = dns.EDNS0SUBNET
-	if clientSubnet.Is4() {
+	if clientSubnet.Addr().Is4() {
 		subnetOption.Family = 1
 	} else {
 		subnetOption.Family = 2
 	}
-	subnetOption.SourceNetmask = uint8(clientSubnet.BitLen())
-	subnetOption.Address = clientSubnet.AsSlice()
+	subnetOption.SourceNetmask = uint8(clientSubnet.Bits())
+	subnetOption.Address = clientSubnet.Addr().AsSlice()
 }

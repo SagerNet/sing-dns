@@ -30,7 +30,7 @@ type TransportOptions struct {
 	Name         string
 	Dialer       N.Dialer
 	Address      string
-	ClientSubnet netip.Addr
+	ClientSubnet netip.Prefix
 }
 
 var transports map[string]TransportConstructor
