@@ -107,7 +107,7 @@ func (c *Client) ExchangeWithResponseCheck(ctx context.Context, transport Transp
 		len(message.Ns) == 0 &&
 		len(message.Extra) == 0 &&
 		!clientSubnetLoaded
-	disableCache := isSimpleRequest || c.disableCache || DisableCacheFromContext(ctx)
+	disableCache := !isSimpleRequest || c.disableCache || DisableCacheFromContext(ctx)
 	if !disableCache {
 		response, ttl := c.loadResponse(question, transport)
 		if response != nil {
