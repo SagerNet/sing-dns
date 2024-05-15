@@ -423,7 +423,12 @@ func (c *Client) ExchangeCache(ctx context.Context, message *dns.Msg) (*dns.Msg,
 		return nil, false
 	}
 	question := message.Question[0]
-	disableCache := c.disableCache || DisableCacheFromContext(ctx)
+	_, clientSubnetLoaded := transportNameFromContext(ctx)
+	isSimpleRequest := len(message.Question) == 1 &&
+		len(message.Ns) == 0 &&
+		len(message.Extra) == 0 &&
+		!clientSubnetLoaded
+	disableCache := !isSimpleRequest || c.disableCache || DisableCacheFromContext(ctx)
 	if disableCache {
 		return nil, false
 	}
