@@ -44,7 +44,7 @@ func NewTCPTransport(options TransportOptions) (*TCPTransport, error) {
 
 func newTCPTransport(options TransportOptions, serverAddr M.Socksaddr) *TCPTransport {
 	transport := &TCPTransport{
-		newAdapter(options, serverAddr),
+		newAdapter(options, serverAddr, false),
 	}
 	transport.handler = transport
 	return transport

@@ -43,7 +43,7 @@ func NewUDPTransport(options TransportOptions) (*UDPTransport, error) {
 		serverAddr.Port = 53
 	}
 	transport := &UDPTransport{
-		newAdapter(options, serverAddr),
+		newAdapter(options, serverAddr, true),
 		newTCPTransport(options, serverAddr),
 		options.Logger,
 		512,

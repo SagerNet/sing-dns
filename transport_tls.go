@@ -41,7 +41,7 @@ func NewTLSTransport(options TransportOptions) (*TLSTransport, error) {
 		serverAddr.Port = 853
 	}
 	transport := &TLSTransport{
-		newAdapter(options, serverAddr),
+		newAdapter(options, serverAddr, true),
 	}
 	transport.handler = transport
 	return transport, nil

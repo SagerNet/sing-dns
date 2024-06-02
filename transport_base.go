@@ -29,12 +29,13 @@ type myTransportAdapter struct {
 	dialer     N.Dialer
 	serverAddr M.Socksaddr
 	clientAddr netip.Prefix
+	reuse      bool
 	handler    myTransportHandler
 	access     sync.Mutex
 	conn       *dnsConnection
 }
 
-func newAdapter(options TransportOptions, serverAddr M.Socksaddr) myTransportAdapter {
+func newAdapter(options TransportOptions, serverAddr M.Socksaddr, reuse bool) myTransportAdapter {
 	ctx, cancel := context.WithCancel(options.Context)
 	return myTransportAdapter{
 		name:       options.Name,
@@ -43,6 +44,7 @@ func newAdapter(options TransportOptions, serverAddr M.Socksaddr) myTransportAda
 		dialer:     options.Dialer,
 		serverAddr: serverAddr,
 		clientAddr: options.ClientSubnet,
+		reuse:      reuse,
 	}
 }
 
@@ -55,18 +57,21 @@ func (t *myTransportAdapter) Start() error {
 }
 
 func (t *myTransportAdapter) open(ctx context.Context) (*dnsConnection, error) {
-	connection := t.conn
-	if connection != nil {
-		if !common.Done(connection.ctx) {
-			return connection, nil
+	var connection *dnsConnection
+	if t.reuse {
+		connection = t.conn
+		if connection != nil {
+			if !common.Done(connection.ctx) {
+				return connection, nil
+			}
 		}
-	}
-	t.access.Lock()
-	defer t.access.Unlock()
-	connection = t.conn
-	if connection != nil {
-		if !common.Done(connection.ctx) {
-			return connection, nil
+		t.access.Lock()
+		defer t.access.Unlock()
+		connection = t.conn
+		if connection != nil {
+			if !common.Done(connection.ctx) {
+				return connection, nil
+			}
 		}
 	}
 	conn, err := t.handler.DialContext(ctx)
@@ -81,7 +86,9 @@ func (t *myTransportAdapter) open(ctx context.Context) (*dnsConnection, error) {
 		callbacks: make(map[uint16]*dnsCallback),
 	}
 	go t.recvLoop(connection)
-	t.conn = connection
+	if t.reuse {
+		t.conn = connection
+	}
 	return connection, nil
 }
 
@@ -110,7 +117,6 @@ func (t *myTransportAdapter) recvLoop(conn *dnsConnection) {
 		}
 	})
 	group.Cleanup(func() {
-		conn.cancel()
 		conn.Close()
 	})
 	group.Run(conn.ctx)
@@ -118,22 +124,16 @@ func (t *myTransportAdapter) recvLoop(conn *dnsConnection) {
 
 func (t *myTransportAdapter) Exchange(ctx context.Context, message *dns.Msg) (*dns.Msg, error) {
 	messageId := message.Id
-	var (
-		conn *dnsConnection
-		err  error
-	)
-	for attempts := 0; attempts < 2; attempts++ {
-		conn, err = t.open(t.ctx)
-		if err == nil {
-			break
-		}
-	}
+	conn, err := t.open(t.ctx)
 	if err != nil {
 		return nil, err
 	}
 	response, err := t.exchange(ctx, conn, message)
 	if err != nil {
 		return nil, err
+	}
+	if !t.reuse {
+		conn.Close()
 	}
 	response.Id = messageId
 	return response, nil
@@ -151,11 +151,22 @@ func (t *myTransportAdapter) exchange(ctx context.Context, conn *dnsConnection, 
 	conn.callbacks[exMessage.Id] = callback
 	conn.access.Unlock()
 	defer t.cleanup(conn, exMessage.Id, callback)
-	conn.writeAccess.Lock()
-	err := t.handler.WriteMessage(conn, &exMessage)
-	conn.writeAccess.Unlock()
+	var err error
+	done := make(chan struct{})
+	go func() {
+		conn.writeAccess.Lock()
+		err = t.handler.WriteMessage(conn, &exMessage)
+		conn.writeAccess.Unlock()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		conn.Close()
+		return nil, ctx.Err()
+	}
 	if err != nil {
-		conn.cancel()
+		conn.Close()
 		return nil, err
 	}
 	select {
@@ -165,7 +176,7 @@ func (t *myTransportAdapter) exchange(ctx context.Context, conn *dnsConnection, 
 	case <-conn.ctx.Done():
 		return nil, E.Errors(conn.err, conn.ctx.Err())
 	case <-ctx.Done():
-		conn.cancel()
+		conn.Close()
 		return nil, ctx.Err()
 	}
 }
@@ -186,7 +197,6 @@ func (t *myTransportAdapter) cleanup(conn *dnsConnection, messageId uint16, call
 func (t *myTransportAdapter) Reset() {
 	conn := t.conn
 	if conn != nil {
-		conn.cancel()
 		conn.Close()
 	}
 }
@@ -213,6 +223,11 @@ type dnsConnection struct {
 	err         error
 	queryId     uint16
 	callbacks   map[uint16]*dnsCallback
+}
+
+func (c *dnsConnection) Close() error {
+	c.cancel()
+	return c.Conn.Close()
 }
 
 type dnsCallback struct {
