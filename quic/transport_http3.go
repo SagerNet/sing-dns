@@ -70,7 +70,7 @@ func (t *HTTP3Transport) Start() error {
 }
 
 func (t *HTTP3Transport) Reset() {
-	t.transport.CloseIdleConnections()
+	_ = t.transport.Close()
 }
 
 func (t *HTTP3Transport) Close() error {
