@@ -16,7 +16,10 @@ import (
 	"github.com/miekg/dns"
 )
 
-const DefaultTTL = 600
+const (
+	DefaultTTL     = 600
+	DefaultTimeout = 5 * time.Second
+)
 
 var (
 	ErrNoRawSupport           = E.New("no raw query support by current transport")
@@ -26,6 +29,7 @@ var (
 )
 
 type Client struct {
+	timeout          time.Duration
 	disableCache     bool
 	disableExpire    bool
 	independentCache bool
@@ -48,6 +52,7 @@ type transportCacheKey struct {
 }
 
 type ClientOptions struct {
+	Timeout          time.Duration
 	DisableCache     bool
 	DisableExpire    bool
 	IndependentCache bool
@@ -57,11 +62,15 @@ type ClientOptions struct {
 
 func NewClient(options ClientOptions) *Client {
 	client := &Client{
+		timeout:          options.Timeout,
 		disableCache:     options.DisableCache,
 		disableExpire:    options.DisableExpire,
 		independentCache: options.IndependentCache,
 		initRDRCFunc:     options.RDRC,
 		logger:           options.Logger,
+	}
+	if client.timeout == 0 {
+		client.timeout = DefaultTimeout
 	}
 	if !client.disableCache {
 		if !client.independentCache {
@@ -148,7 +157,14 @@ func (c *Client) ExchangeWithResponseCheck(ctx context.Context, transport Transp
 			return nil, ErrResponseRejectedCached
 		}
 	}
+	var cancel context.CancelFunc
+	if c.timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, c.timeout)
+	}
 	response, err := transport.Exchange(ctx, message)
+	if cancel != nil {
+		cancel()
+	}
 	if err != nil {
 		return nil, err
 	}
