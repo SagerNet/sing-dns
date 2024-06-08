@@ -18,7 +18,7 @@ import (
 
 const (
 	DefaultTTL     = 600
-	DefaultTimeout = 5 * time.Second
+	DefaultTimeout = 10 * time.Second
 )
 
 var (
@@ -157,14 +157,9 @@ func (c *Client) ExchangeWithResponseCheck(ctx context.Context, transport Transp
 			return nil, ErrResponseRejectedCached
 		}
 	}
-	var cancel context.CancelFunc
-	if c.timeout > 0 {
-		ctx, cancel = context.WithTimeout(ctx, c.timeout)
-	}
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	response, err := transport.Exchange(ctx, message)
-	if cancel != nil {
-		cancel()
-	}
+	cancel()
 	if err != nil {
 		return nil, err
 	}
@@ -286,8 +281,10 @@ func (c *Client) LookupWithResponseCheck(ctx context.Context, transport Transpor
 			return nil, ErrResponseRejectedCached
 		}
 	}
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	var rCode int
 	response, err := transport.Lookup(ctx, domain, strategy)
+	cancel()
 	if err != nil {
 		return nil, wrapError(err)
 	}
