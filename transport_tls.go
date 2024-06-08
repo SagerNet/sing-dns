@@ -3,15 +3,16 @@ package dns
 import (
 	"context"
 	"crypto/tls"
-	"encoding/binary"
-	"net"
+	"net/netip"
 	"net/url"
+	"os"
+	"sync"
 
-	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
+	"github.com/sagernet/sing/common/x/list"
 
 	"github.com/miekg/dns"
 )
@@ -25,7 +26,17 @@ func init() {
 }
 
 type TLSTransport struct {
-	myTransportAdapter
+	name        string
+	dialer      N.Dialer
+	logger      logger.ContextLogger
+	serverAddr  M.Socksaddr
+	access      sync.Mutex
+	connections list.List[*tlsDNSConn]
+}
+
+type tlsDNSConn struct {
+	*tls.Conn
+	queryId uint16
 }
 
 func NewTLSTransport(options TransportOptions) (*TLSTransport, error) {
@@ -40,57 +51,83 @@ func NewTLSTransport(options TransportOptions) (*TLSTransport, error) {
 	if serverAddr.Port == 0 {
 		serverAddr.Port = 853
 	}
-	transport := &TLSTransport{
-		newAdapter(options, serverAddr, true),
-	}
-	transport.handler = transport
-	return transport, nil
+	return newTLSTransport(options, serverAddr), nil
 }
 
-func (t *TLSTransport) DialContext(ctx context.Context) (net.Conn, error) {
-	conn, err := t.dialer.DialContext(ctx, N.NetworkTCP, t.serverAddr)
-	if err != nil {
-		return nil, err
+func newTLSTransport(options TransportOptions, serverAddr M.Socksaddr) *TLSTransport {
+	return &TLSTransport{
+		name:       options.Name,
+		dialer:     options.Dialer,
+		logger:     options.Logger,
+		serverAddr: serverAddr,
 	}
-	tlsConn := tls.Client(conn, &tls.Config{
-		ServerName: t.serverAddr.AddrString(),
-	})
-	err = tlsConn.HandshakeContext(ctx)
+}
+
+func (t *TLSTransport) Name() string {
+	return t.name
+}
+
+func (t *TLSTransport) Start() error {
+	return nil
+}
+
+func (t *TLSTransport) Reset() {
+	t.access.Lock()
+	defer t.access.Unlock()
+	for connection := t.connections.Front(); connection != nil; connection = connection.Next() {
+		connection.Value.Close()
+	}
+	t.connections.Init()
+}
+
+func (t *TLSTransport) Close() error {
+	t.Reset()
+	return nil
+}
+
+func (t *TLSTransport) Raw() bool {
+	return true
+}
+
+func (t *TLSTransport) Exchange(ctx context.Context, message *dns.Msg) (*dns.Msg, error) {
+	t.access.Lock()
+	conn := t.connections.PopFront()
+	t.access.Unlock()
+	if conn == nil {
+		tcpConn, err := t.dialer.DialContext(ctx, N.NetworkTCP, t.serverAddr)
+		if err != nil {
+			return nil, err
+		}
+		tlsConn := tls.Client(tcpConn, &tls.Config{
+			ServerName: t.serverAddr.AddrString(),
+		})
+		err = tlsConn.HandshakeContext(ctx)
+		if err != nil {
+			tcpConn.Close()
+			return nil, err
+		}
+		conn = &tlsDNSConn{Conn: tlsConn}
+	}
+	messageId := message.Id
+	conn.queryId++
+	message.Id = conn.queryId
+	err := writeMessage(conn, message)
 	if err != nil {
 		conn.Close()
-		return nil, err
+		return nil, E.Cause(err, "write request")
 	}
-	return tlsConn, nil
+	response, err := readMessage(conn)
+	if err != nil {
+		conn.Close()
+		return nil, E.Cause(err, "read response")
+	}
+	response.Id = messageId
+	t.access.Lock()
+	t.connections.PushBack(conn)
+	t.access.Unlock()
+	return response, nil
 }
 
-func (t *TLSTransport) ReadMessage(conn net.Conn) (*dns.Msg, error) {
-	var length uint16
-	err := binary.Read(conn, binary.BigEndian, &length)
-	if err != nil {
-		return nil, err
-	}
-	buffer := buf.NewSize(int(length))
-	defer buffer.Release()
-	_, err = buffer.ReadFullFrom(conn, int(length))
-	if err != nil {
-		return nil, err
-	}
-	var message dns.Msg
-	err = message.Unpack(buffer.Bytes())
-	return &message, err
-}
-
-func (t *TLSTransport) WriteMessage(conn net.Conn, message *dns.Msg) error {
-	requestLen := message.Len()
-	buffer := buf.NewSize(3 + requestLen)
-	defer buffer.Release()
-	common.Must(binary.Write(buffer, binary.BigEndian, uint16(requestLen)))
-	exMessage := *message
-	exMessage.Compress = true
-	rawMessage, err := exMessage.PackBuffer(buffer.FreeBytes())
-	if err != nil {
-		return err
-	}
-	buffer.Truncate(2 + len(rawMessage))
-	return common.Error(conn.Write(buffer.Bytes()))
+func (t *TLSTransport) Lookup(ctx context.Context, domain string, strategy DomainStrategy) ([]netip.Addr, error) {
+	return nil, os.ErrInvalid
 }
