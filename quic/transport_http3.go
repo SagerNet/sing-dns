@@ -98,6 +98,10 @@ func (t *HTTP3Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS
 	}
 	request.Header.Set("Content-Type", dns.MimeType)
 	request.Header.Set("Accept", dns.MimeType)
+	if u, err := url.Parse(t.destination); err == nil && u.User != nil {
+		password, _ := u.User.Password()
+		request.SetBasicAuth(u.User.Username(), password)
+	}
 	response, err := t.transport.RoundTrip(request)
 	requestBuffer.Release()
 	if err != nil {
