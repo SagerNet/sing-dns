@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"os"
 
 	"github.com/sagernet/sing/common/buf"
@@ -88,6 +89,10 @@ func (t *HTTPSTransport) Exchange(ctx context.Context, message *dns.Msg) (*dns.M
 	}
 	request.Header.Set("Content-Type", MimeType)
 	request.Header.Set("Accept", MimeType)
+	if u, err := url.Parse(t.destination); err == nil && u.User != nil {
+		password, _ := u.User.Password()
+		request.SetBasicAuth(u.User.Username(), password)
+	}
 	response, err := t.transport.RoundTrip(request)
 	requestBuffer.Release()
 	if err != nil {
