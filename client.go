@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/netip"
+	"strings"
 	"time"
 
 	"github.com/sagernet/sing/common"
@@ -168,6 +169,25 @@ func (c *Client) ExchangeWithResponseCheck(ctx context.Context, transport Transp
 			c.rdrc.SaveRDRCAsync(transport.Name(), question.Name, question.Qtype, c.logger)
 		}
 		return response, ErrResponseRejected
+	}
+	if question.Qtype == dns.TypeHTTPS {
+		if strategy == DomainStrategyUseIPv4 || strategy == DomainStrategyUseIPv6 {
+			for _, rr := range response.Answer {
+				https, isHTTPS := rr.(*dns.HTTPS)
+				if !isHTTPS {
+					continue
+				}
+				content := https.SVCB
+				content.Value = common.Filter(content.Value, func(it dns.SVCBKeyValue) bool {
+					if strategy == DomainStrategyUseIPv4 {
+						return it.Key() != dns.SVCB_IPV6HINT
+					} else {
+						return it.Key() != dns.SVCB_IPV4HINT
+					}
+				})
+				https.SVCB = content
+			}
+		}
 	}
 	var timeToLive int
 	for _, recordList := range [][]dns.RR{response.Answer, response.Ns, response.Extra} {
@@ -568,7 +588,10 @@ func (c *Client) lookupToExchange(ctx context.Context, transport Transport, name
 	)
 	if responseChecker != nil {
 		response, err = c.ExchangeWithResponseCheck(ctx, transport, &message, strategy, func(response *dns.Msg) bool {
-			addresses, _ := MessageToAddresses(response)
+			addresses, addrErr := MessageToAddresses(response)
+			if addrErr != nil {
+				return false
+			}
 			return responseChecker(addresses)
 		})
 	} else {
@@ -663,7 +686,7 @@ func (c *Client) loadResponse(question dns.Question, transport Transport) (*dns.
 }
 
 func MessageToAddresses(response *dns.Msg) ([]netip.Addr, error) {
-	if response.Rcode != dns.RcodeSuccess {
+	if response.Rcode != dns.RcodeSuccess && response.Rcode != dns.RcodeNameError {
 		return nil, RCodeError(response.Rcode)
 	}
 	addresses := make([]netip.Addr, 0, len(response.Answer))
@@ -673,6 +696,12 @@ func MessageToAddresses(response *dns.Msg) ([]netip.Addr, error) {
 			addresses = append(addresses, M.AddrFromIP(answer.A))
 		case *dns.AAAA:
 			addresses = append(addresses, M.AddrFromIP(answer.AAAA))
+		case *dns.HTTPS:
+			for _, value := range answer.SVCB.Value {
+				if value.Key() == dns.SVCB_IPV4HINT || value.Key() == dns.SVCB_IPV6HINT {
+					addresses = append(addresses, common.Map(strings.Split(value.String(), ","), M.ParseAddr)...)
+				}
+			}
 		}
 	}
 	return addresses, nil
