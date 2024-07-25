@@ -115,10 +115,8 @@ func (t *TLSTransport) Exchange(ctx context.Context, message *dns.Msg) (*dns.Msg
 }
 
 func (t *TLSTransport) exchange(message *dns.Msg, conn *tlsDNSConn) (*dns.Msg, error) {
-	messageId := message.Id
 	conn.queryId++
-	message.Id = conn.queryId
-	err := writeMessage(conn, message)
+	err := writeMessage(conn, conn.queryId, message)
 	if err != nil {
 		conn.Close()
 		return nil, E.Cause(err, "write request")
@@ -128,7 +126,6 @@ func (t *TLSTransport) exchange(message *dns.Msg, conn *tlsDNSConn) (*dns.Msg, e
 		conn.Close()
 		return nil, E.Cause(err, "read response")
 	}
-	response.Id = messageId
 	t.access.Lock()
 	t.connections.PushBack(conn)
 	t.access.Unlock()

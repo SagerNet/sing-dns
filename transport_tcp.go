@@ -79,7 +79,7 @@ func (t *TCPTransport) Exchange(ctx context.Context, message *dns.Msg) (*dns.Msg
 		return nil, err
 	}
 	defer conn.Close()
-	err = writeMessage(conn, message)
+	err = writeMessage(conn, 0, message)
 	if err != nil {
 		return nil, err
 	}
@@ -110,12 +110,13 @@ func readMessage(reader io.Reader) (*dns.Msg, error) {
 	return &message, err
 }
 
-func writeMessage(writer io.Writer, message *dns.Msg) error {
+func writeMessage(writer io.Writer, messageId uint16, message *dns.Msg) error {
 	requestLen := message.Len()
 	buffer := buf.NewSize(3 + requestLen)
 	defer buffer.Release()
 	common.Must(binary.Write(buffer, binary.BigEndian, uint16(requestLen)))
 	exMessage := *message
+	exMessage.Id = messageId
 	exMessage.Compress = true
 	rawMessage, err := exMessage.PackBuffer(buffer.FreeBytes())
 	if err != nil {
