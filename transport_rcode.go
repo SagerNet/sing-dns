@@ -67,9 +67,10 @@ func (t *RCodeTransport) Raw() bool {
 }
 
 func (t *RCodeTransport) Exchange(ctx context.Context, message *dns.Msg) (*dns.Msg, error) {
-	message.Response = true
-	message.Rcode = int(t.code)
-	return message, nil
+	exMessage := *message
+	exMessage.Response = true
+	exMessage.Rcode = int(t.code)
+	return &exMessage, nil
 }
 
 func (t *RCodeTransport) Lookup(ctx context.Context, domain string, strategy DomainStrategy) ([]netip.Addr, error) {

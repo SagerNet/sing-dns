@@ -102,7 +102,7 @@ func (c *Client) ExchangeWithResponseCheck(ctx context.Context, transport Transp
 	question := message.Question[0]
 	clientSubnet, clientSubnetLoaded := ClientSubnetFromContext(ctx)
 	if clientSubnetLoaded {
-		SetClientSubnet(message, clientSubnet, true)
+		message = SetClientSubnet(message, clientSubnet, true)
 	}
 	isSimpleRequest := len(message.Question) == 1 &&
 		len(message.Ns) == 0 &&
