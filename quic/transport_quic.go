@@ -144,7 +144,7 @@ func (t *Transport) exchange(ctx context.Context, message *mDNS.Msg, conn quic.C
 	buffer := buf.NewSize(3 + requestLen)
 	defer buffer.Release()
 	common.Must(binary.Write(buffer, binary.BigEndian, uint16(requestLen)))
-	rawMessage, err := message.PackBuffer(buffer.FreeBytes())
+	rawMessage, err := exMessage.PackBuffer(buffer.FreeBytes())
 	if err != nil {
 		return nil, err
 	}
