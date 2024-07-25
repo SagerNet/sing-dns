@@ -13,11 +13,11 @@ type edns0SubnetTransportWrapper struct {
 }
 
 func (t *edns0SubnetTransportWrapper) Exchange(ctx context.Context, message *dns.Msg) (*dns.Msg, error) {
-	SetClientSubnet(message, t.clientSubnet, false)
+	message = SetClientSubnet(message, t.clientSubnet, false)
 	return t.Transport.Exchange(ctx, message)
 }
 
-func SetClientSubnet(message *dns.Msg, clientSubnet netip.Prefix, override bool) {
+func SetClientSubnet(message *dns.Msg, clientSubnet netip.Prefix, override bool) *dns.Msg {
 	var (
 		optRecord    *dns.OPT
 		subnetOption *dns.EDNS0_SUBNET
@@ -31,7 +31,7 @@ findExists:
 				subnetOption, isEDNS0Subnet = option.(*dns.EDNS0_SUBNET)
 				if isEDNS0Subnet {
 					if !override {
-						return
+						return message
 					}
 					break findExists
 				}
@@ -39,6 +39,8 @@ findExists:
 		}
 	}
 	if optRecord == nil {
+		exMessage := *message
+		message = &exMessage
 		optRecord = &dns.OPT{
 			Hdr: dns.RR_Header{
 				Name:   ".",
@@ -46,6 +48,8 @@ findExists:
 			},
 		}
 		message.Extra = append(message.Extra, optRecord)
+	} else {
+		message = message.Copy()
 	}
 	if subnetOption == nil {
 		subnetOption = new(dns.EDNS0_SUBNET)
@@ -59,4 +63,5 @@ findExists:
 	}
 	subnetOption.SourceNetmask = uint8(clientSubnet.Bits())
 	subnetOption.Address = clientSubnet.Addr().AsSlice()
+	return message
 }
