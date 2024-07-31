@@ -8,8 +8,6 @@ import (
 	"sort"
 
 	"github.com/sagernet/sing/common"
-	M "github.com/sagernet/sing/common/metadata"
-	N "github.com/sagernet/sing/common/network"
 
 	"github.com/miekg/dns"
 )
@@ -30,11 +28,6 @@ type LocalTransport struct {
 func NewLocalTransport(options TransportOptions) *LocalTransport {
 	return &LocalTransport{
 		name: options.Name,
-		resolver: net.Resolver{
-			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-				return options.Dialer.DialContext(ctx, N.NetworkName(network), M.ParseSocksaddr(address))
-			},
-		},
 	}
 }
 
