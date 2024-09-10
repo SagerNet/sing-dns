@@ -159,7 +159,6 @@ func (t *UDPTransport) exchange(ctx context.Context, message *dns.Msg) (*dns.Msg
 	case <-conn.ctx.Done():
 		return nil, E.Errors(conn.err, conn.ctx.Err())
 	case <-ctx.Done():
-		conn.Close()
 		return nil, ctx.Err()
 	}
 }
