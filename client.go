@@ -202,6 +202,11 @@ func (c *Client) ExchangeWithResponseCheck(ctx context.Context, transport Transp
 	}
 	for _, recordList := range [][]dns.RR{response.Answer, response.Ns, response.Extra} {
 		for _, record := range recordList {
+			if record.Header().Rrtype == dns.TypeOPT {
+				// The Ttl field of the OPT record is used to store the extended RCode
+				// and the edns0 version number.
+				continue
+			}
 			record.Header().Ttl = uint32(timeToLive)
 		}
 	}
