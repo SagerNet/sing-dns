@@ -25,7 +25,9 @@ func (d *DialerWrapper) DialContext(ctx context.Context, network string, destina
 	if destination.IsIP() {
 		return d.dialer.DialContext(ctx, network, destination)
 	}
-	addresses, err := d.client.Lookup(ctx, d.transport, destination.Fqdn, d.strategy)
+	addresses, err := d.client.Lookup(ctx, d.transport, destination.Fqdn, QueryOptions{
+		Strategy: d.strategy,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +38,9 @@ func (d *DialerWrapper) ListenPacket(ctx context.Context, destination M.Socksadd
 	if destination.IsIP() {
 		return d.dialer.ListenPacket(ctx, destination)
 	}
-	addresses, err := d.client.Lookup(ctx, d.transport, destination.Fqdn, d.strategy)
+	addresses, err := d.client.Lookup(ctx, d.transport, destination.Fqdn, QueryOptions{
+		Strategy: d.strategy,
+	})
 	if err != nil {
 		return nil, err
 	}
