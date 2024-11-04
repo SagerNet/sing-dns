@@ -520,47 +520,13 @@ func (c *Client) exchangeToLookup(ctx context.Context, transport Transport, mess
 	if err != nil {
 		return nil, wrapError(err)
 	}
-	response := dns.Msg{
-		MsgHdr: dns.MsgHdr{
-			Id:       message.Id,
-			Rcode:    dns.RcodeSuccess,
-			Response: true,
-		},
-		Question: message.Question,
-	}
 	var timeToLive uint32
 	if rewriteTTL, loaded := RewriteTTLFromContext(ctx); loaded {
 		timeToLive = rewriteTTL
 	} else {
 		timeToLive = DefaultTTL
 	}
-	for _, address := range result {
-		if address.Is4In6() {
-			address = netip.AddrFrom4(address.As4())
-		}
-		if address.Is4() {
-			response.Answer = append(response.Answer, &dns.A{
-				Hdr: dns.RR_Header{
-					Name:   question.Name,
-					Rrtype: dns.TypeA,
-					Class:  dns.ClassINET,
-					Ttl:    timeToLive,
-				},
-				A: address.AsSlice(),
-			})
-		} else {
-			response.Answer = append(response.Answer, &dns.AAAA{
-				Hdr: dns.RR_Header{
-					Name:   question.Name,
-					Rrtype: dns.TypeAAAA,
-					Class:  dns.ClassINET,
-					Ttl:    timeToLive,
-				},
-				AAAA: address.AsSlice(),
-			})
-		}
-	}
-	return &response, nil
+	return FixedResponse(message.Id, question, result, timeToLive), nil
 }
 
 func (c *Client) lookupToExchange(ctx context.Context, transport Transport, name string, qType uint16, strategy DomainStrategy, responseChecker func(responseAddrs []netip.Addr) bool) ([]netip.Addr, error) {

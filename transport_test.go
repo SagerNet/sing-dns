@@ -13,6 +13,7 @@ import (
 )
 
 func TestTransports(t *testing.T) {
+	t.Parallel()
 	serverAddressList := []string{
 		"114.114.114.114",
 		"tcp://114.114.114.114",
@@ -24,6 +25,7 @@ func TestTransports(t *testing.T) {
 	for _, serverAddressItem := range serverAddressList {
 		serverAddress := serverAddressItem
 		t.Run(serverAddress, func(t *testing.T) {
+			t.Parallel()
 			transport, err := dns.CreateTransport(dns.TransportOptions{
 				Context: context.Background(),
 				Logger:  logger.NOP(),
