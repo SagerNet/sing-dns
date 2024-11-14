@@ -8,11 +8,12 @@ import (
 	"time"
 
 	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/cache"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/task"
+	"github.com/sagernet/sing/contrab/freelru"
+	"github.com/sagernet/sing/contrab/maphash"
 
 	"github.com/miekg/dns"
 )
@@ -37,8 +38,8 @@ type Client struct {
 	rdrc             RDRCStore
 	initRDRCFunc     func() RDRCStore
 	logger           logger.ContextLogger
-	cache            *cache.LruCache[dns.Question, *dns.Msg]
-	transportCache   *cache.LruCache[transportCacheKey, *dns.Msg]
+	cache            freelru.Cache[dns.Question, *dns.Msg]
+	transportCache   freelru.Cache[transportCacheKey, *dns.Msg]
 }
 
 type RDRCStore interface {
@@ -57,6 +58,7 @@ type ClientOptions struct {
 	DisableCache     bool
 	DisableExpire    bool
 	IndependentCache bool
+	CacheCapacity    uint32
 	RDRC             func() RDRCStore
 	Logger           logger.ContextLogger
 }
@@ -73,11 +75,15 @@ func NewClient(options ClientOptions) *Client {
 	if client.timeout == 0 {
 		client.timeout = DefaultTimeout
 	}
+	cacheCapacity := options.CacheCapacity
+	if cacheCapacity < 1024 {
+		cacheCapacity = 1024
+	}
 	if !client.disableCache {
 		if !client.independentCache {
-			client.cache = cache.New[dns.Question, *dns.Msg]()
+			client.cache = common.Must1(freelru.NewSharded[dns.Question, *dns.Msg](cacheCapacity, maphash.NewHasher[dns.Question]().Hash32))
 		} else {
-			client.transportCache = cache.New[transportCacheKey, *dns.Msg]()
+			client.transportCache = common.Must1(freelru.NewSharded[transportCacheKey, *dns.Msg](cacheCapacity, maphash.NewHasher[transportCacheKey]().Hash32))
 		}
 	}
 	return client
@@ -395,10 +401,10 @@ func (c *Client) LookupWithResponseCheck(ctx context.Context, transport Transpor
 
 func (c *Client) ClearCache() {
 	if c.cache != nil {
-		c.cache.Clear()
+		c.cache.Purge()
 	}
 	if c.transportCache != nil {
-		c.transportCache.Clear()
+		c.transportCache.Purge()
 	}
 }
 
@@ -474,23 +480,22 @@ func (c *Client) storeCache(transport Transport, question dns.Question, message 
 	}
 	if c.disableExpire {
 		if !c.independentCache {
-			c.cache.Store(question, message)
+			c.cache.Add(question, message)
 		} else {
-			c.transportCache.Store(transportCacheKey{
+			c.transportCache.Add(transportCacheKey{
 				Question:      question,
 				transportName: transport.Name(),
 			}, message)
 		}
 		return
 	}
-	expireAt := time.Now().Add(time.Second * time.Duration(timeToLive))
 	if !c.independentCache {
-		c.cache.StoreWithExpire(question, message, expireAt)
+		c.cache.AddWithLifetime(question, message, time.Second*time.Duration(timeToLive))
 	} else {
-		c.transportCache.StoreWithExpire(transportCacheKey{
+		c.transportCache.AddWithLifetime(transportCacheKey{
 			Question:      question,
 			transportName: transport.Name(),
-		}, message, expireAt)
+		}, message, time.Second*time.Duration(timeToLive))
 	}
 }
 
@@ -569,9 +574,9 @@ func (c *Client) loadResponse(question dns.Question, transport Transport) (*dns.
 	)
 	if c.disableExpire {
 		if !c.independentCache {
-			response, loaded = c.cache.Load(question)
+			response, loaded = c.cache.Get(question)
 		} else {
-			response, loaded = c.transportCache.Load(transportCacheKey{
+			response, loaded = c.transportCache.Get(transportCacheKey{
 				Question:      question,
 				transportName: transport.Name(),
 			})
@@ -583,9 +588,9 @@ func (c *Client) loadResponse(question dns.Question, transport Transport) (*dns.
 	} else {
 		var expireAt time.Time
 		if !c.independentCache {
-			response, expireAt, loaded = c.cache.LoadWithExpire(question)
+			response, expireAt, loaded = c.cache.GetWithLifetime(question)
 		} else {
-			response, expireAt, loaded = c.transportCache.LoadWithExpire(transportCacheKey{
+			response, expireAt, loaded = c.transportCache.GetWithLifetime(transportCacheKey{
 				Question:      question,
 				transportName: transport.Name(),
 			})
@@ -596,9 +601,9 @@ func (c *Client) loadResponse(question dns.Question, transport Transport) (*dns.
 		timeNow := time.Now()
 		if timeNow.After(expireAt) {
 			if !c.independentCache {
-				c.cache.Delete(question)
+				c.cache.Remove(question)
 			} else {
-				c.transportCache.Delete(transportCacheKey{
+				c.transportCache.Remove(transportCacheKey{
 					Question:      question,
 					transportName: transport.Name(),
 				})
