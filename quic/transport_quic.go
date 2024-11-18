@@ -159,6 +159,7 @@ func (t *Transport) exchange(ctx context.Context, message *mDNS.Msg, conn quic.C
 	if err != nil {
 		return nil, err
 	}
+	_ = stream.Close()
 	buffer.Reset()
 	_, err = buffer.ReadFullFrom(stream, 2)
 	if err != nil {
