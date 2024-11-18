@@ -153,12 +153,12 @@ func (t *Transport) exchange(ctx context.Context, message *mDNS.Msg, conn quic.C
 	if err != nil {
 		return nil, err
 	}
-	defer stream.Close()
-	defer stream.CancelRead(0)
 	_, err = stream.Write(buffer.Bytes())
 	if err != nil {
+		stream.Close()
 		return nil, err
 	}
+	stream.Close()
 	buffer.Reset()
 	_, err = buffer.ReadFullFrom(stream, 2)
 	if err != nil {
