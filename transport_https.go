@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"os"
 
 	"github.com/sagernet/sing/common/buf"
@@ -22,21 +23,25 @@ const MimeType = "application/dns-message"
 var _ Transport = (*HTTPSTransport)(nil)
 
 type HTTPSTransport struct {
-	name        string
-	destination string
-	transport   *http.Transport
+	name      string
+	serverURL *url.URL
+	transport *http.Transport
 }
 
 func init() {
 	RegisterTransport([]string{"https"}, func(options TransportOptions) (Transport, error) {
-		return NewHTTPSTransport(options), nil
+		return NewHTTPSTransport(options)
 	})
 }
 
-func NewHTTPSTransport(options TransportOptions) *HTTPSTransport {
+func NewHTTPSTransport(options TransportOptions) (*HTTPSTransport, error) {
+	serverURL, err := url.Parse(options.Address)
+	if err != nil {
+		return nil, err
+	}
 	return &HTTPSTransport{
-		name:        options.Name,
-		destination: options.Address,
+		name:      options.Name,
+		serverURL: serverURL,
 		transport: &http.Transport{
 			ForceAttemptHTTP2: true,
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -46,7 +51,7 @@ func NewHTTPSTransport(options TransportOptions) *HTTPSTransport {
 				NextProtos: []string{"dns"},
 			},
 		},
-	}
+	}, nil
 }
 
 func (t *HTTPSTransport) Name() string {
@@ -81,13 +86,17 @@ func (t *HTTPSTransport) Exchange(ctx context.Context, message *dns.Msg) (*dns.M
 		requestBuffer.Release()
 		return nil, err
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, t.destination, bytes.NewReader(rawMessage))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, t.serverURL.String(), bytes.NewReader(rawMessage))
 	if err != nil {
 		requestBuffer.Release()
 		return nil, err
 	}
 	request.Header.Set("Content-Type", MimeType)
 	request.Header.Set("Accept", MimeType)
+	if t.serverURL.User != nil {
+		password, _ := t.serverURL.User.Password()
+		request.SetBasicAuth(t.serverURL.User.Username(), password)
+	}
 	response, err := t.transport.RoundTrip(request)
 	requestBuffer.Release()
 	if err != nil {

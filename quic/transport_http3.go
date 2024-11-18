@@ -31,9 +31,9 @@ func init() {
 }
 
 type HTTP3Transport struct {
-	name        string
-	destination string
-	transport   *http3.RoundTripper
+	name      string
+	serverURL *url.URL
+	transport *http3.RoundTripper
 }
 
 func NewHTTP3Transport(options dns.TransportOptions) (*HTTP3Transport, error) {
@@ -43,8 +43,8 @@ func NewHTTP3Transport(options dns.TransportOptions) (*HTTP3Transport, error) {
 	}
 	serverURL.Scheme = "https"
 	return &HTTP3Transport{
-		name:        options.Name,
-		destination: serverURL.String(),
+		name:      options.Name,
+		serverURL: serverURL,
 		transport: &http3.RoundTripper{
 			Dial: func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
 				destinationAddr := M.ParseSocksaddr(addr)
@@ -91,13 +91,17 @@ func (t *HTTP3Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS
 		requestBuffer.Release()
 		return nil, err
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, t.destination, bytes.NewReader(rawMessage))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, t.serverURL.String(), bytes.NewReader(rawMessage))
 	if err != nil {
 		requestBuffer.Release()
 		return nil, err
 	}
 	request.Header.Set("Content-Type", dns.MimeType)
 	request.Header.Set("Accept", dns.MimeType)
+	if t.serverURL.User != nil {
+		password, _ := t.serverURL.User.Password()
+		request.SetBasicAuth(t.serverURL.User.Username(), password)
+	}
 	response, err := t.transport.RoundTrip(request)
 	requestBuffer.Release()
 	if err != nil {
