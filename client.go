@@ -99,7 +99,7 @@ func (c *Client) Exchange(ctx context.Context, transport Transport, message *dns
 	return c.ExchangeWithResponseCheck(ctx, transport, message, options, nil)
 }
 
-func (c *Client) ExchangeWithResponseCheck(ctx context.Context, transport Transport, message *dns.Msg, options QueryOptions, responseChecker func(response *dns.Msg) bool) (*dns.Msg, error) {
+func (c *Client) ExchangeWithResponseCheck(ctx context.Context, transport Transport, message *dns.Msg, options QueryOptions, responseChecker func(responseAddrs []netip.Addr) bool) (*dns.Msg, error) {
 	if len(message.Question) == 0 {
 		if c.logger != nil {
 			c.logger.WarnContext(ctx, "bad question size: ", len(message.Question))
@@ -147,7 +147,7 @@ func (c *Client) ExchangeWithResponseCheck(ctx context.Context, transport Transp
 	}
 	if !transport.Raw() {
 		if question.Qtype == dns.TypeA || question.Qtype == dns.TypeAAAA {
-			return c.exchangeToLookup(ctx, transport, message, question, options)
+			return c.exchangeToLookup(ctx, transport, message, question, options, responseChecker)
 		}
 		return nil, ErrNoRawSupport
 	}
@@ -169,11 +169,15 @@ func (c *Client) ExchangeWithResponseCheck(ctx context.Context, transport Transp
 	if err != nil {
 		return nil, err
 	}
-	if responseChecker != nil && !responseChecker(response) {
-		if c.rdrc != nil {
-			c.rdrc.SaveRDRCAsync(transport.Name(), question.Name, question.Qtype, c.logger)
+	if responseChecker != nil {
+		addr, addrErr := MessageToAddresses(response)
+		if addrErr != nil || !responseChecker(addr) {
+			if c.rdrc != nil {
+				c.rdrc.SaveRDRCAsync(transport.Name(), question.Name, question.Qtype, c.logger)
+			}
+			logRejectedResponse(c.logger, ctx, response)
+			return response, ErrResponseRejected
 		}
-		return response, ErrResponseRejected
 	}
 	if question.Qtype == dns.TypeHTTPS {
 		if options.Strategy == DomainStrategyUseIPv4 || options.Strategy == DomainStrategyUseIPv6 {
@@ -194,20 +198,20 @@ func (c *Client) ExchangeWithResponseCheck(ctx context.Context, transport Transp
 			}
 		}
 	}
-	var timeToLive int
+	var timeToLive uint32
 	for _, recordList := range [][]dns.RR{response.Answer, response.Ns, response.Extra} {
 		for _, record := range recordList {
-			if timeToLive == 0 || record.Header().Ttl > 0 && int(record.Header().Ttl) < timeToLive {
-				timeToLive = int(record.Header().Ttl)
+			if timeToLive == 0 || record.Header().Ttl > 0 && record.Header().Ttl < timeToLive {
+				timeToLive = record.Header().Ttl
 			}
 		}
 	}
 	if options.RewriteTTL != nil {
-		timeToLive = int(*options.RewriteTTL)
+		timeToLive = *options.RewriteTTL
 	}
 	for _, recordList := range [][]dns.RR{response.Answer, response.Ns, response.Extra} {
 		for _, record := range recordList {
-			record.Header().Ttl = uint32(timeToLive)
+			record.Header().Ttl = timeToLive
 		}
 	}
 	response.Id = messageId
@@ -326,6 +330,7 @@ func (c *Client) LookupWithResponseCheck(ctx context.Context, transport Transpor
 				c.rdrc.SaveRDRCAsync(transport.Name(), dnsName, dns.TypeAAAA, c.logger)
 			}
 		}
+		logRejectedResponse(c.logger, ctx, FixedResponse(0, dns.Question{}, response, DefaultTTL))
 		return response, ErrResponseRejected
 	}
 	header := dns.MsgHdr{
@@ -365,7 +370,7 @@ func (c *Client) LookupWithResponseCheck(ctx context.Context, transport Transpor
 					})
 				}
 			}
-			c.storeCache(transport, question4, message4, int(timeToLive))
+			c.storeCache(transport, question4, message4, timeToLive)
 		}
 		if options.Strategy != DomainStrategyUseIPv4 {
 			question6 := dns.Question{
@@ -393,7 +398,7 @@ func (c *Client) LookupWithResponseCheck(ctx context.Context, transport Transpor
 					})
 				}
 			}
-			c.storeCache(transport, question6, message6, int(timeToLive))
+			c.storeCache(transport, question6, message6, timeToLive)
 		}
 	}
 	return response, nil
@@ -474,7 +479,7 @@ func sortAddresses(response4 []netip.Addr, response6 []netip.Addr, strategy Doma
 	}
 }
 
-func (c *Client) storeCache(transport Transport, question dns.Question, message *dns.Msg, timeToLive int) {
+func (c *Client) storeCache(transport Transport, question dns.Question, message *dns.Msg, timeToLive uint32) {
 	if timeToLive == 0 {
 		return
 	}
@@ -499,14 +504,14 @@ func (c *Client) storeCache(transport Transport, question dns.Question, message 
 	}
 }
 
-func (c *Client) exchangeToLookup(ctx context.Context, transport Transport, message *dns.Msg, question dns.Question, options QueryOptions) (*dns.Msg, error) {
+func (c *Client) exchangeToLookup(ctx context.Context, transport Transport, message *dns.Msg, question dns.Question, options QueryOptions, responseChecker func(responseAddrs []netip.Addr) bool) (*dns.Msg, error) {
 	domain := question.Name
 	if question.Qtype == dns.TypeA {
 		options.Strategy = DomainStrategyUseIPv4
 	} else {
 		options.Strategy = DomainStrategyUseIPv6
 	}
-	result, err := c.Lookup(ctx, transport, domain, options)
+	result, err := c.LookupWithResponseCheck(ctx, transport, domain, options, responseChecker)
 	if err != nil {
 		return nil, wrapError(err)
 	}
@@ -516,7 +521,9 @@ func (c *Client) exchangeToLookup(ctx context.Context, transport Transport, mess
 	} else {
 		timeToLive = DefaultTTL
 	}
-	return FixedResponse(message.Id, question, result, timeToLive), nil
+	response := FixedResponse(message.Id, question, result, timeToLive)
+	logExchangedResponse(c.logger, ctx, response, timeToLive)
+	return response, nil
 }
 
 func (c *Client) lookupToExchange(ctx context.Context, transport Transport, name string, qType uint16, options QueryOptions, responseChecker func(responseAddrs []netip.Addr) bool) ([]netip.Addr, error) {
@@ -543,13 +550,7 @@ func (c *Client) lookupToExchange(ctx context.Context, transport Transport, name
 		err      error
 	)
 	if responseChecker != nil {
-		response, err = c.ExchangeWithResponseCheck(ctx, transport, &message, options, func(response *dns.Msg) bool {
-			addresses, addrErr := MessageToAddresses(response)
-			if addrErr != nil {
-				return false
-			}
-			return responseChecker(addresses)
-		})
+		response, err = c.ExchangeWithResponseCheck(ctx, transport, &message, options, responseChecker)
 	} else {
 		response, err = c.Exchange(ctx, transport, &message, options)
 	}
