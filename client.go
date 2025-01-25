@@ -99,7 +99,31 @@ func (c *Client) Exchange(ctx context.Context, transport Transport, message *dns
 	return c.ExchangeWithResponseCheck(ctx, transport, message, options, nil)
 }
 
-func (c *Client) ExchangeWithResponseCheck(ctx context.Context, transport Transport, message *dns.Msg, options QueryOptions, responseChecker func(responseAddrs []netip.Addr) bool) (*dns.Msg, error) {
+func (c *Client) ExchangeWithResponseCheck(ctx context.Context, transport Transport, message *dns.Msg, options QueryOptions, responseChecker func(responseAddrs []netip.Addr) bool) (msg *dns.Msg, err error) {
+	const maxRetry int = 2
+	retries := 0
+	for {
+		msg, err = c.exchangeWithResponseCheck(ctx, transport, message, options, responseChecker)
+
+		if err != nil && ctx.Err() == nil && retries < maxRetry {
+			if strings.Contains(err.Error(), "Connection max age expired") ||
+				strings.Contains(err.Error(), "use of closed network connection") {
+				// Avoid 5s delay.
+				if c.logger != nil {
+					c.logger.DebugContext(ctx, "exchange retry again for ", formatQuestion(message.Question[0].String()), " failed with: ", err.Error())
+				}
+				retries++
+				continue
+			}
+		}
+
+		break
+	}
+
+	return msg, err
+}
+
+func (c *Client) exchangeWithResponseCheck(ctx context.Context, transport Transport, message *dns.Msg, options QueryOptions, responseChecker func(responseAddrs []netip.Addr) bool) (*dns.Msg, error) {
 	if len(message.Question) == 0 {
 		if c.logger != nil {
 			c.logger.WarnContext(ctx, "bad question size: ", len(message.Question))
