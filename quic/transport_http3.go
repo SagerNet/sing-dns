@@ -33,7 +33,7 @@ func init() {
 type HTTP3Transport struct {
 	name        string
 	destination string
-	transport   *http3.RoundTripper
+	transport   *http3.Transport
 }
 
 func NewHTTP3Transport(options dns.TransportOptions) (*HTTP3Transport, error) {
@@ -45,7 +45,7 @@ func NewHTTP3Transport(options dns.TransportOptions) (*HTTP3Transport, error) {
 	return &HTTP3Transport{
 		name:        options.Name,
 		destination: serverURL.String(),
-		transport: &http3.RoundTripper{
+		transport: &http3.Transport{
 			Dial: func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
 				destinationAddr := M.ParseSocksaddr(addr)
 				conn, dialErr := options.Dialer.DialContext(ctx, N.NetworkUDP, destinationAddr)

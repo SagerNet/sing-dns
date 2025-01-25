@@ -17,12 +17,12 @@ func logCachedResponse(logger logger.ContextLogger, ctx context.Context, respons
 	logger.DebugContext(ctx, "cached ", domain, " ", dns.RcodeToString[response.Rcode], " ", ttl)
 	for _, recordList := range [][]dns.RR{response.Answer, response.Ns, response.Extra} {
 		for _, record := range recordList {
-			logger.InfoContext(ctx, "cached ", domain, " ", dns.Type(record.Header().Rrtype).String(), " ", formatQuestion(record.String()))
+			logger.InfoContext(ctx, "cached ", dns.Type(record.Header().Rrtype).String(), " ", formatQuestion(record.String()))
 		}
 	}
 }
 
-func logExchangedResponse(logger logger.ContextLogger, ctx context.Context, response *dns.Msg, ttl int) {
+func logExchangedResponse(logger logger.ContextLogger, ctx context.Context, response *dns.Msg, ttl uint32) {
 	if logger == nil || len(response.Question) == 0 {
 		return
 	}
@@ -30,7 +30,18 @@ func logExchangedResponse(logger logger.ContextLogger, ctx context.Context, resp
 	logger.DebugContext(ctx, "exchanged ", domain, " ", dns.RcodeToString[response.Rcode], " ", ttl)
 	for _, recordList := range [][]dns.RR{response.Answer, response.Ns, response.Extra} {
 		for _, record := range recordList {
-			logger.InfoContext(ctx, "exchanged ", domain, " ", dns.Type(record.Header().Rrtype).String(), " ", formatQuestion(record.String()))
+			logger.InfoContext(ctx, "exchanged ", dns.Type(record.Header().Rrtype).String(), " ", formatQuestion(record.String()))
+		}
+	}
+}
+
+func logRejectedResponse(logger logger.ContextLogger, ctx context.Context, response *dns.Msg) {
+	if logger == nil || len(response.Question) == 0 {
+		return
+	}
+	for _, recordList := range [][]dns.RR{response.Answer, response.Ns, response.Extra} {
+		for _, record := range recordList {
+			logger.InfoContext(ctx, "rejected ", dns.Type(record.Header().Rrtype).String(), " ", formatQuestion(record.String()))
 		}
 	}
 }
