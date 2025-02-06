@@ -5,7 +5,7 @@ go 1.20
 require (
 	github.com/miekg/dns v1.1.62
 	github.com/sagernet/quic-go v0.48.2-beta.1
-	github.com/sagernet/sing v0.6.0-beta.2
+	github.com/sagernet/sing v0.6.0
 	github.com/stretchr/testify v1.9.0
 )
 
