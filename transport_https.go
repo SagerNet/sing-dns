@@ -42,9 +42,6 @@ func NewHTTPSTransport(options TransportOptions) *HTTPSTransport {
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 				return options.Dialer.DialContext(ctx, network, M.ParseSocksaddr(addr))
 			},
-			TLSClientConfig: &tls.Config{
-				NextProtos: []string{"dns"},
-			},
 		},
 	}
 }

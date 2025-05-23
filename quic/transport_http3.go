@@ -54,9 +54,6 @@ func NewHTTP3Transport(options dns.TransportOptions) (*HTTP3Transport, error) {
 				}
 				return quic.DialEarly(ctx, bufio.NewUnbindPacketConn(conn), conn.RemoteAddr(), tlsCfg, cfg)
 			},
-			TLSClientConfig: &tls.Config{
-				NextProtos: []string{"dns"},
-			},
 		},
 	}, nil
 }
