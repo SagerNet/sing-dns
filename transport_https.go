@@ -3,7 +3,6 @@ package dns
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"io"
 	"net"
 	"net/http"
@@ -41,9 +40,6 @@ func NewHTTPSTransport(options TransportOptions) *HTTPSTransport {
 			ForceAttemptHTTP2: true,
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 				return options.Dialer.DialContext(ctx, network, M.ParseSocksaddr(addr))
-			},
-			TLSClientConfig: &tls.Config{
-				NextProtos: []string{"dns"},
 			},
 		},
 	}
